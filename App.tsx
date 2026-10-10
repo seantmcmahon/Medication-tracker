@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Linking, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { HistoryModal } from './src/components/HistoryModal';
 import { MedCard } from './src/components/MedCard';
@@ -8,10 +8,11 @@ import { MedFormModal } from './src/components/MedFormModal';
 import { SettingsModal } from './src/components/SettingsModal';
 import { TakenEarlierModal } from './src/components/TakenEarlierModal';
 import { Button, colors } from './src/components/ui';
+import { familyEnabled, fetchInviteLink, syncToServer } from './src/familySync';
 import { DEFAULT_SETTINGS, doseWarning, formatTime, getStatus, newId, pruneDoses } from './src/logic';
 import { rescheduleAll, scheduleTestAlarm, setupNotifications } from './src/notifications';
 import { loadAll, saveDoses, saveMeds, saveSettings } from './src/storage';
-import type { DoseRecord, Medication, Settings } from './src/types';
+import type { DoseRecord, FamilyStatus, Medication, Settings } from './src/types';
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ function Home() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [undo, setUndo] = useState<{ dose: DoseRecord; name: string } | null>(null);
+  const [familyStatus, setFamilyStatus] = useState<FamilyStatus | null>(null);
 
   // Load saved data and ask for notification permission on start-up.
   useEffect(() => {
@@ -64,25 +66,52 @@ function Home() {
       .catch((e) => console.warn('Failed to schedule notifications', e));
   }, []);
 
-  // Save and reschedule whenever anything changes.
+  // Family alerts: send the latest data to the server. Chained like rescheduling so updates stay in order.
+  const syncing = useRef(Promise.resolve());
+  const syncFamily = useCallback(() => {
+    const { meds, doses, settings } = latest.current;
+    if (!familyEnabled(settings.family)) {
+      setFamilyStatus(null);
+      return syncing.current;
+    }
+    syncing.current = syncing.current.then(() =>
+      syncToServer(meds, doses, settings)
+        .then((r) => setFamilyStatus({ ok: true, at: Date.now(), subscribers: r.subscribers }))
+        .catch((e: Error) => setFamilyStatus({ ok: false, at: Date.now(), error: e.message })),
+    );
+    return syncing.current;
+  }, []);
+
+  // Save, reschedule and update the family server whenever anything changes.
   useEffect(() => {
     if (!loaded) return;
     saveMeds(meds);
     saveDoses(doses);
     saveSettings(settings);
     reschedule();
-  }, [loaded, meds, doses, settings, reschedule]);
+    syncFamily();
+  }, [loaded, meds, doses, settings, reschedule, syncFamily]);
+
+  // If the last update didn't get through (e.g. no signal), keep trying while the app is open.
+  useEffect(() => {
+    if (!familyStatus || familyStatus.ok) return;
+    const timer = setTimeout(syncFamily, 2 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [familyStatus, syncFamily]);
 
   // When the app comes back to the front, refresh the clock and the schedule.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         setNow(Date.now());
-        if (loaded) reschedule();
+        if (loaded) {
+          reschedule();
+          syncFamily();
+        }
       }
     });
     return () => sub.remove();
-  }, [loaded, reschedule]);
+  }, [loaded, reschedule, syncFamily]);
 
   useEffect(() => {
     if (!undo) return;
@@ -218,6 +247,17 @@ function Home() {
         visible={settingsOpen}
         settings={settings}
         onChange={setSettings}
+        familyStatus={familyStatus}
+        onFamilyTest={syncFamily}
+        onShareInvite={() => {
+          fetchInviteLink(settings.family)
+            .then((link) =>
+              Share.share({
+                message: `Tap this link to get Telegram updates about ${settings.family.name}'s medication: ${link}`,
+              }),
+            )
+            .catch((e: Error) => Alert.alert('Could not get the invite link', e.message));
+        }}
         onTestAlarm={() => {
           scheduleTestAlarm()
             .then(() => Alert.alert('Test alarm set', 'It will go off in 5 seconds. Try locking the phone.'))

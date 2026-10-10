@@ -1,0 +1,95 @@
+# Deploys the family-alerts server (server/) to Cloudflare and connects the Telegram bot to it.
+# Needs these repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TELEGRAM_BOT_TOKEN, APP_KEY
+# Until they're all set, this workflow skips deployment without failing.
+name: Deploy family alerts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/medication-reminder-app-65s0ud]
+    paths:
+      - 'server/**'
+      - 'src/logic.ts'
+      - 'src/types.ts'
+      - '.github/workflows/deploy-alerts.yml'
+
+concurrency:
+  group: deploy-alerts
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      APP_KEY: ${{ secrets.APP_KEY }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Check secrets are set
+        id: secrets
+        run: |
+          missing=""
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID TELEGRAM_BOT_TOKEN APP_KEY; do
+            [ -z "${!name}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::Not deploying: missing repository secrets:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Cloudflare
+        if: steps.secrets.outputs.ready == 'true'
+        id: deploy
+        run: |
+          npx wrangler deploy | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$url" ]; then
+            echo "::error::Couldn't find the server address in the deploy output. If this is your first Worker, open Workers & Pages in the Cloudflare dashboard once to pick a workers.dev subdomain, then run this again."
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Store secrets on the server
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          node -e 'console.log(JSON.stringify({ TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN, APP_KEY: process.env.APP_KEY }))' > secrets.json
+          npx wrangler secret bulk secrets.json
+          rm secrets.json
+
+      - name: Connect the Telegram bot
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          curl -fsS -X POST "${{ steps.deploy.outputs.url }}/admin/setup" -H "Authorization: Bearer $APP_KEY"
+          {
+            echo "### Family alerts server is live"
+            echo ""
+            echo "Server address for the app's Settings → Family alerts:"
+            echo ""
+            echo '```'
+            echo "${{ steps.deploy.outputs.url }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

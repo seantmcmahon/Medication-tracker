@@ -1,4 +1,4 @@
-import type { DoseRecord, MealKey, Medication, MedStatus, Settings } from './types';
+import type { DoseRecord, MealKey, Medication, MedStatus, Settings, TimingSettings } from './types';
 
 export const MINUTE = 60 * 1000;
 export const HOUR = 60 * MINUTE;
@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mealGraceMinutes: 60,
   alarmRepeatMinutes: 15,
   alarmRepeatCount: 8,
+  family: { serverUrl: '', key: '', name: 'Dad', bufferMinutes: 5, lateMinutes: 30 },
 };
 
 /** Fills in fields added since a medication was first saved. */
@@ -78,7 +79,7 @@ function minutesOfDay(t: number): number {
  * His "day" for counting doses runs from the middle of the night to the middle of the next night,
  * so a dose taken just after midnight still counts towards the day before.
  */
-export function dayBounds(t: number, s: Settings): { start: number; cutoff: number; nextStart: number } {
+export function dayBounds(t: number, s: TimingSettings): { start: number; cutoff: number; nextStart: number } {
   const night = (s.dayStart - s.lastDoseBy + 24 * 60) % (24 * 60);
   const boundary = (s.lastDoseBy + Math.floor(night / 2)) % (24 * 60);
   const start = prevAt(t, boundary);
@@ -87,14 +88,14 @@ export function dayBounds(t: number, s: Settings): { start: number; cutoff: numb
 }
 
 /** Overnight is after the "last doses by" time and before the day starts. */
-export function isInQuietHours(t: number, s: Settings): boolean {
+export function isInQuietHours(t: number, s: TimingSettings): boolean {
   if (!s.quietHoursEnabled || s.lastDoseBy === s.dayStart) return false;
   const m = minutesOfDay(t);
   return s.lastDoseBy < s.dayStart ? m > s.lastDoseBy && m < s.dayStart : m > s.lastDoseBy || m < s.dayStart;
 }
 
 /** Moves a time that falls overnight to the start of the next day. */
-export function deferPastQuietHours(t: number, s: Settings): number {
+export function deferPastQuietHours(t: number, s: TimingSettings): number {
   return isInQuietHours(t, s) ? nextAt(t, s.dayStart) : t;
 }
 
@@ -104,12 +105,12 @@ export function dosesFor(medId: string, doses: DoseRecord[]): DoseRecord[] {
   return doses.filter((d) => d.medId === medId).sort((a, b) => b.takenAt - a.takenAt);
 }
 
-export function getStatus(med: Medication, doses: DoseRecord[], now: number, s: Settings): MedStatus {
+export function getStatus(med: Medication, doses: DoseRecord[], now: number, s: TimingSettings): MedStatus {
   const mine = dosesFor(med.id, doses).filter((d) => d.takenAt <= now);
   return med.schedule === 'meals' ? mealStatus(med, mine, now, s) : intervalStatus(med, mine, now, s);
 }
 
-function intervalStatus(med: Medication, mine: DoseRecord[], now: number, s: Settings): MedStatus {
+function intervalStatus(med: Medication, mine: DoseRecord[], now: number, s: TimingSettings): MedStatus {
   const last = mine[0]?.takenAt ?? null;
   const inLast24h = mine.filter((d) => d.takenAt > now - DAY);
   const gap = med.minHours * HOUR;
@@ -165,7 +166,7 @@ function intervalStatus(med: Medication, mine: DoseRecord[], now: number, s: Set
   return { ...base, kind: 'done', remindAt: null, dueBy, today };
 }
 
-function mealStatus(med: Medication, mine: DoseRecord[], now: number, s: Settings): MedStatus {
+function mealStatus(med: Medication, mine: DoseRecord[], now: number, s: TimingSettings): MedStatus {
   const last = mine[0]?.takenAt ?? null;
   const base = {
     lastTaken: last,
@@ -231,7 +232,7 @@ export function describeStatus(
   med: Medication,
   st: MedStatus,
   now: number,
-  s: Settings,
+  s: TimingSettings,
 ): { headline: string; details: string[] } {
   const details: string[] = [];
 
@@ -310,7 +311,7 @@ export function doseWarning(
   med: Medication,
   doses: DoseRecord[],
   at: number,
-  s: Settings,
+  s: TimingSettings,
 ): { title: string; message: string } | null {
   const st = getStatus(med, doses, at, s);
 
@@ -355,7 +356,7 @@ export type PlannedNotification = {
 export function planNotifications(
   meds: Medication[],
   doses: DoseRecord[],
-  settings: Settings,
+  settings: TimingSettings,
   now: number,
 ): PlannedNotification[] {
   const plan: PlannedNotification[] = [];

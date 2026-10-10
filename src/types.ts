@@ -27,7 +27,7 @@ export type DoseRecord = {
   takenAt: number;
 };
 
-export type Settings = {
+export type TimingSettings = {
   /** When his day starts, in minutes after midnight. */
   dayStart: number;
   /** All doses should be taken by this time, in minutes after midnight. */
@@ -43,6 +43,27 @@ export type Settings = {
   /** How many times the overdue alarm repeats after the first one. */
   alarmRepeatCount: number;
 };
+
+export type Settings = TimingSettings & {
+  /** Telegram updates for the family, via the alerts server in server/. */
+  family: FamilySettings;
+};
+
+export type FamilySettings = {
+  /** e.g. https://medication-tracker-alerts.example.workers.dev. Empty = family alerts off. */
+  serverUrl: string;
+  /** The APP_KEY password the server was set up with. Never sent anywhere except as the auth header. */
+  key: string;
+  /** How he's referred to in messages, e.g. "Dad". */
+  name: string;
+  /** Updates within this many minutes of the first one are sent as one message. */
+  bufferMinutes: number;
+  /** Tell the family once his overdue alarm has been going this long. */
+  lateMinutes: number;
+};
+
+/** Result of the last update sent to the family alerts server. */
+export type FamilyStatus = { ok: boolean; at: number; subscribers?: number; error?: string };
 
 export type StatusKind =
   /** Never taken and nothing due - fine to take now. */

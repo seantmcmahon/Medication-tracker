@@ -26,7 +26,7 @@ He taps one big **"I've taken it"** button after each tablet. There's also:
 - **No alarms overnight** (on by default): alarms that would go off between the "last doses by" time and the start of his day wait until the morning.
 - A **test alarm** button in Settings so you can check it's loud enough.
 
-Everything is stored on the phone itself. There's no account, no server and no internet needed.
+Everything is stored on the phone itself. There's no account and no internet needed, unless you turn on family alerts (below).
 
 ## Getting it onto his phone
 
@@ -58,6 +58,47 @@ Installing on an iPhone needs an Apple Developer account ($99/year). Build with 
 
 Note that iOS doesn't let normal apps play true alarm-clock sounds. The overdue alarm is a "Time Sensitive" notification with the custom alarm sound (up to 30 seconds). It gets through Focus modes, but **not** if the phone's ring/silent switch is set to silent.
 
+## Family alerts on Telegram (optional)
+
+Family members can get Telegram messages when he takes a dose, when a dose is missed, and a summary each night. Updates that happen close together, such as several tablets at breakfast, are grouped into one message (5 minutes by default). A dose that's undone straight away is never sent.
+
+Missed doses are noticed by a small server rather than his phone, so the family is still told if his phone is off or the battery has died. The server runs free on Cloudflare and is deployed from GitHub, so this can all be set up from a phone.
+
+**1. Make the Telegram bot.** In Telegram, message **@BotFather**, send `/newbot` and follow the prompts. Something like "Dad's Medication" works as a name. BotFather replies with a **token** (it looks like `123456:ABC…`). Copy it.
+
+**2. Set up Cloudflare (free).**
+1. Sign up at <https://dash.cloudflare.com>.
+2. Open **Workers & Pages** once. If it asks you to choose a `workers.dev` subdomain, pick any name.
+3. Copy your **Account ID**. It's shown on the Workers & Pages page and on the account home page.
+4. Go to **My Profile → API Tokens → Create Token**, use the **"Edit Cloudflare Workers"** template, and create it. Copy the token.
+
+**3. Choose a key.** Make up a long password, e.g. four random words. The app uses it to prove to the server that updates are genuine.
+
+**4. Add four secrets to GitHub.** Open this repository in your phone's browser. If the Settings tab is hidden, switch to the desktop site. Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+
+| Name | Value |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | the token from BotFather |
+| `CLOUDFLARE_ACCOUNT_ID` | your Cloudflare Account ID |
+| `CLOUDFLARE_API_TOKEN` | the Cloudflare API token |
+| `APP_KEY` | the key you chose |
+
+Secrets stay private even though the repository is public.
+
+**5. Deploy.** Go to **Actions → Deploy family alerts → Run workflow**. When it's green (about a minute), open the run. The summary shows the **server address**.
+
+**6. Connect his phone.** In the app, go to **Settings → Family alerts**. Enter the server address, the key, and his name as the family call him. Tap **Connect**; it should show "Connected".
+
+**7. Invite the family.** Tap **Share the invite link** and send it to family members, e.g. on WhatsApp. When they tap it, Telegram opens; they tap **Start** and they're signed up. The bot ignores anyone without the link.
+
+In Telegram, each person can send:
+- `/status` to see how things stand right now
+- `/updates_off` to stop getting a message for every dose. Missed-dose alerts still come through.
+- `/summary_off` to stop the nightly summary
+- `/stop` to leave
+
+In the app you can also set how long updates are grouped for, and how long his overdue alarm has to be going before the family is told (30 minutes by default).
+
 ## Development
 
 ```bash
@@ -73,5 +114,7 @@ npx expo run:android   # or run:ios — dev build on a device or emulator
 - `src/storage.ts`: saves data on the device (AsyncStorage).
 - `App.tsx` and `src/components/`: the screens.
 - `scripts/make-alarm-sound.js`: regenerates `assets/sounds/alarm.wav`.
+- `src/familySync.ts`: sends updates to the family alerts server.
+- `server/`: the family alerts server, a Cloudflare Worker. `server/src/engine.ts` holds all its decisions (grouping, missed doses, the nightly summary, bot commands), reusing `src/logic.ts`. Run `npm test` in `server/` to test it.
 
 > This app is a memory aid, not medical advice. Set the intervals from the prescription or pharmacist's instructions.

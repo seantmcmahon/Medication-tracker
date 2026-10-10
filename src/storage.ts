@@ -32,6 +32,7 @@ export async function loadAll(): Promise<StoredData> {
       ...DEFAULT_SETTINGS,
       ...settings,
       mealTimes: { ...DEFAULT_SETTINGS.mealTimes, ...settings.mealTimes },
+      family: { ...DEFAULT_SETTINGS.family, ...settings.family },
     },
   };
 }

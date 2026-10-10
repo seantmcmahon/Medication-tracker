@@ -3,5 +3,9 @@
   "compilerOptions": {
     "strict": true,
     "allowImportingTsExtensions": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "server"
+  ]
 }

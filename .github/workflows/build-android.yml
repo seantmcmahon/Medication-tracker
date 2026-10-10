@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main, claude/medication-reminder-app-65s0ud]
-    paths-ignore: ['**.md']
+    paths-ignore: ['**.md', 'server/**', '.github/workflows/deploy-alerts.yml']
 
 permissions:
   contents: write

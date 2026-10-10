@@ -1,0 +1,16 @@
+# Cloudflare Worker that sends family alerts on Telegram. Deployed by .github/workflows/deploy-alerts.yml.
+name = "medication-tracker-alerts"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "HOME"
+class_name = "Home"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Home"]
+
+# Check for missed doses and send grouped updates every minute.
+[triggers]
+crons = ["* * * * *"]
