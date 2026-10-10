@@ -1,5 +1,10 @@
 export type MealKey = 'breakfast' | 'lunch' | 'dinner' | 'bedtime';
 
+export type PillShape = 'round' | 'oval' | 'capsule';
+export type PillColorName = 'white' | 'cream' | 'yellow' | 'orange' | 'pink' | 'red' | 'blue' | 'green' | 'brown' | 'lilac';
+/** What the real tablet looks like, so it can be recognised on screen. color2 is a capsule's second half. */
+export type PillLook = { shape: PillShape; color: PillColorName; color2?: PillColorName };
+
 export type Medication = {
   id: string;
   name: string;
@@ -17,6 +22,8 @@ export type Medication = {
   dailyTarget: number | null;
   /** Which meal times it's taken at. (meals) */
   meals: MealKey[];
+  pill: PillLook;
+  /** Legacy card colour from before the Steady design; no longer shown. */
   color: string;
   notes: string;
 };
@@ -46,7 +53,11 @@ export type TimingSettings = {
   warnBeforeMinutes: number[];
 };
 
+export type Appearance = 'auto' | 'day' | 'night' | 'contrast';
+
 export type Settings = TimingSettings & {
+  /** auto = Day, switching to Night between the last-doses-by time and the start of the day. */
+  appearance: Appearance;
   /** Telegram updates for the family, via the alerts server in server/. */
   family: FamilySettings;
 };

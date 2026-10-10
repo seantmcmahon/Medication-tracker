@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   alarmRepeatMinutes: 15,
   alarmRepeatCount: 8,
   warnBeforeMinutes: [30, 15],
+  appearance: 'auto',
   family: { serverUrl: '', key: '', name: 'Dad', bufferMinutes: 5, lateMinutes: 30 },
 };
 
@@ -38,6 +39,7 @@ export function normalizeMedication(m: Partial<Medication> & Pick<Medication, 'i
     maxPerDay: null,
     dailyTarget: null,
     meals: [],
+    pill: { shape: 'round', color: 'white' },
     color: '#1565C0',
     notes: '',
   };
@@ -93,6 +95,11 @@ export function isInQuietHours(t: number, s: TimingSettings): boolean {
   if (!s.quietHoursEnabled || s.lastDoseBy === s.dayStart) return false;
   const m = minutesOfDay(t);
   return s.lastDoseBy < s.dayStart ? m > s.lastDoseBy && m < s.dayStart : m > s.lastDoseBy || m < s.dayStart;
+}
+
+/** Between the last-doses-by time and the start of the day, whether or not alarms are held. */
+export function isNightTime(t: number, s: TimingSettings): boolean {
+  return isInQuietHours(t, { ...s, quietHoursEnabled: true });
 }
 
 /** Moves a time that falls overnight to the start of the next day. */
@@ -307,6 +314,69 @@ export function describeStatus(
   return { headline, details };
 }
 
+/** Which part of the Today screen a medicine belongs in. */
+export type CardState = 'due' | 'overdue' | 'wait' | 'done' | 'asNeeded';
+
+/**
+ * The Steady card: one state, one headline and at most one detail line.
+ * Words follow the design system: an instruction or a time, never a sum.
+ */
+export function cardText(
+  med: Medication,
+  st: MedStatus,
+  now: number,
+  s: TimingSettings,
+): { state: CardState; headline: string; detail: string | null } {
+  const lastLine = st.lastTaken !== null ? `Last taken ${relativeDay(st.lastTaken, now)}${formatTime(st.lastTaken)}` : null;
+
+  if (st.meal) {
+    const meal = mealLabel(st.meal.key).toLowerCase();
+    const taken = st.meal.takenToday[st.meal.takenToday.length - 1];
+    const detail = taken
+      ? `${mealLabel(taken.key)} dose taken at ${formatTime(taken.at)}`
+      : st.meal.missedToday.length > 0
+        ? `Missed today: ${st.meal.missedToday.map(mealLabel).join(', ')}`
+        : null;
+    if (st.kind === 'overdue')
+      return { state: 'overdue', headline: `${mealLabel(st.meal.key)} dose overdue by ${formatDuration(now - st.dueBy!)}`, detail };
+    if (st.kind === 'wait') return { state: 'wait', headline: `Next: with ${meal}, ${formatTime(st.meal.time)}`, detail };
+    return { state: 'due', headline: `Take now, with ${meal}`, detail };
+  }
+
+  // Falling behind on a daily number of doses matters more than when the last one was.
+  const shortLine =
+    st.today && st.today.fits < st.today.target - st.today.taken && st.kind !== 'done'
+      ? `Only ${st.today.fits} more ${st.today.fits === 1 ? 'fits' : 'fit'} in before ${formatTime(st.today.cutoff)}`
+      : null;
+
+  switch (st.kind) {
+    case 'overdue':
+      return { state: 'overdue', headline: `Overdue by ${formatDuration(now - st.dueBy!)}`, detail: shortLine ?? lastLine };
+    case 'wait': {
+      const detail = st.limitedByDailyMax ? `Daily limit reached: ${med.maxPerDay} in 24 hours` : lastLine;
+      return { state: 'wait', headline: `OK from ${formatTime(st.canTakeAt!)}`, detail };
+    }
+    case 'done': {
+      const all = st.today && st.today.taken >= st.today.target;
+      const tomorrow = st.dueBy !== null ? `Tomorrow: first by ${formatTime(deferPastQuietHours(st.dueBy, s))}` : lastLine;
+      return { state: 'done', headline: all ? `All ${st.today!.target} taken` : 'No more today', detail: tomorrow };
+    }
+    default: {
+      // 'ready' or 'never'
+      if (st.dueBy === null) return { state: 'asNeeded', headline: 'OK to take if needed', detail: lastLine };
+      return { state: 'due', headline: `Take by ${formatTime(deferPastQuietHours(st.dueBy, s))}`, detail: shortLine ?? lastLine };
+    }
+  }
+}
+
+/** "", "yesterday at " or "on Mon 3 Oct at ", to go in front of a time. */
+function relativeDay(t: number, now: number): string {
+  const d = formatDayTime(t, now);
+  if (d.startsWith('Today')) return 'at ';
+  if (d.startsWith('Yesterday')) return 'yesterday at ';
+  return `on ${d.slice(0, d.lastIndexOf(' '))} at `;
+}
+
 /** Why logging a dose at `at` might be a mistake, or null if it looks fine. */
 export function doseWarning(
   med: Medication,
@@ -321,7 +391,7 @@ export function doseWarning(
     const prev = st.meal.takenToday[st.meal.takenToday.length - 1];
     const already = prev ? `Today's ${mealLabel(prev.key).toLowerCase()} dose was logged at ${formatTime(prev.at)}. ` : '';
     return {
-      title: '⚠️ Not time yet',
+      title: `Not time yet for ${med.name}`,
       message: `${already}The next dose of ${med.name} is with ${mealLabel(st.meal.key).toLowerCase()} (${formatTime(st.meal.time)}).`,
     };
   }
@@ -331,11 +401,11 @@ export function doseWarning(
       ? `You've already had ${med.maxPerDay} doses of ${med.name} in the last 24 hours.`
       : `The last dose of ${med.name} was only ${formatDuration(at - st.lastTaken!)} before this. ` +
         `The minimum gap is ${formatDuration(med.minHours * HOUR)}.`;
-    return { title: '⚠️ Too soon', message: `${reason}\n\nIt's OK to take from ${formatTime(st.canTakeAt)}.` };
+    return { title: `Too soon for ${med.name}`, message: `${reason}\n\nIt's OK to take from ${formatTime(st.canTakeAt)}.` };
   }
   if (st.kind === 'done' && st.today && st.today.taken >= st.today.target) {
     return {
-      title: '⚠️ Already done today',
+      title: `${med.name} is done for today`,
       message: `You've already had all ${st.today.target} doses of ${med.name} today.`,
     };
   }

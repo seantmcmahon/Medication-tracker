@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  cardText,
   DAY,
   DEFAULT_SETTINGS,
   deferPastQuietHours,
@@ -172,7 +173,7 @@ test('a dose just after midnight counts towards the day before', () => {
 test('warns about an extra dose once all of today are taken', () => {
   const m = paced({ maxHours: null });
   const doses = [8, 12, 16, 20].map((h) => dose(at(h)));
-  assert.equal(doseWarning(m, doses, at(0, 30, 11), S)?.title, '⚠️ Already done today');
+  assert.equal(doseWarning(m, doses, at(0, 30, 11), S)?.title, 'Paracetamol is done for today');
   assert.equal(doseWarning(m, doses.slice(0, 3), at(20), S), null);
 });
 
@@ -288,4 +289,56 @@ test('no warnings overnight when the alarm is held until morning', () => {
   // Due at 3am, alarm held until 7:30am; warnings at 7:00 and 7:15 would still be overnight.
   const plan = planNotifications([med()], [dose(at(21))], S, at(21, 1));
   assert.equal(plan.filter((p) => p.kind === 'warning').length, 0);
+});
+
+// ---------- Card text (Steady design: one headline, at most one detail line) ----------
+
+const card = (m: Medication, doses: DoseRecord[], now: number) => cardText(m, getStatus(m, doses, now, S), now, S);
+
+test('card: take now, with the latest time', () => {
+  assert.deepEqual(card(paced(), [dose(at(9, 30))], at(14)), { state: 'due', headline: 'Take by 3:30pm', detail: 'Last taken at 9:30am' });
+});
+
+test('card: not yet, with when it is OK', () => {
+  assert.deepEqual(card(paced(), [dose(at(11))], at(12)), { state: 'wait', headline: 'OK from 3:00pm', detail: 'Last taken at 11:00am' });
+});
+
+test('card: overdue', () => {
+  assert.deepEqual(card(med(), [dose(base)], base + 6 * HOUR + 25 * MINUTE), {
+    state: 'overdue',
+    headline: 'Overdue by 25 min',
+    detail: 'Last taken at 12:00pm',
+  });
+});
+
+test('card: falling behind says how many still fit', () => {
+  assert.equal(card(paced(), [dose(at(11)), dose(at(16, 30))], at(21)).detail, 'Only 1 more fits in before 11:30pm');
+});
+
+test('card: done for today, and when tomorrow starts', () => {
+  const doses = [8, 12, 16, 20].map((h) => dose(at(h)));
+  assert.deepEqual(card(paced(), doses, at(21)), { state: 'done', headline: 'All 4 taken', detail: 'Tomorrow: first by 11:30am' });
+});
+
+test('card: as needed medicine', () => {
+  assert.equal(card(med({ maxHours: null }), [dose(at(8))], at(14)).state, 'asNeeded');
+  assert.equal(card(med({ maxHours: null }), [], at(14)).headline, 'OK to take if needed');
+});
+
+test('card: meal times', () => {
+  assert.deepEqual(card(withMeals, [dose(at(8, 5))], at(10)), {
+    state: 'wait',
+    headline: 'Next: with dinner, 6:00pm',
+    detail: 'Breakfast dose taken at 8:05am',
+  });
+  assert.deepEqual(card(withMeals, [], at(7, 30)), { state: 'due', headline: 'Take now, with breakfast', detail: null });
+  assert.equal(card(withMeals, [], at(14)).detail, 'Missed today: Breakfast');
+});
+
+test('card: last taken yesterday', () => {
+  assert.equal(card(med({ maxHours: null }), [dose(at(21, 0, 9))], at(9)).detail, 'Last taken yesterday at 9:00pm');
+});
+
+test('old saved medication gets a default pill picture', () => {
+  assert.deepEqual(normalizeMedication({ id: 'x', name: 'Old' } as Medication).pill, { shape: 'round', color: 'white' });
 });

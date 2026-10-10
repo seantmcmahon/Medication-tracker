@@ -18,14 +18,17 @@ Each medication is taken one of two ways.
 - He gets a reminder at the meal and an alarm if it's not taken within an hour. It's OK to take from an hour before the meal.
 - If he tries to take a second dose for the same meal, he gets a warning. A missed dose is shown as missed and isn't doubled up at the next meal.
 
-He taps one big **"I've taken it"** button after each tablet. There's also:
+The **Today** screen puts what to take now at the top, under **Take now**, then **Later today**, **If needed** and **Done for today**. Each medicine has a picture of the real tablet, one line saying what to do ("Take by 3:30pm", "OK from 4:40pm"), dots showing how many of today's doses are done, and one big **"I've taken it"** button. There's also:
 
-- **Took it earlier…** for when he forgot to tap the button at the time.
-- A **"Too soon"** warning if he tries to log a dose before the minimum gap is up.
-- **Undo** straight after logging, and a **History** screen where mistaken entries can be removed.
-- **Add / edit / remove** medication at any time as the prescription changes.
-- **No alarms overnight** (on by default): alarms that would go off between the "last doses by" time and the start of his day wait until the morning.
+- **I took it earlier** for when the button wasn't tapped at the time.
+- A large **"Not time yet" / "Too soon"** sheet if a dose is logged before it should be, with "Don't log it" as the main choice.
+- **Undo** for 30 seconds after logging, and a **History** screen where mistaken entries can be removed.
+- **Day, Night and High contrast** looks. Automatic uses Day and switches to Night after the "last doses by" time.
+- **Carer settings**, opened by pressing and holding at the bottom of Settings, for adding and editing medicines (including what each tablet looks like), timings, meal times, alarms and family alerts. This keeps the medicine list safe from accidental taps.
+- **No alarms overnight** (on by default): alarms that would go off between the "last doses by" time and the start of the day wait until the morning.
 - A **test alarm** button in Settings so you can check it's loud enough.
+
+The look follows the **Steady** design system: Atkinson Hyperlegible Next text no smaller than 18px, buttons at least 56px tall, and every status shown as a word, an icon and a colour.
 
 Everything is stored on the phone itself. There's no account and no internet needed, unless you turn on family alerts (below).
 
@@ -113,7 +116,7 @@ npx expo run:android   # or run:ios — dev build on a device or emulator
 - `src/logic.ts`: all the timing rules (status, daily limits, quiet hours, which notifications to schedule). It's pure functions, covered by `test/logic.test.ts`.
 - `src/notifications.ts`: notification channels and permissions. It throws away and rebuilds the schedule whenever anything changes.
 - `src/storage.ts`: saves data on the device (AsyncStorage).
-- `App.tsx` and `src/components/`: the screens.
+- `App.tsx` (the Today screen) and `src/screens/`: the screens. `src/ui/`: the Steady design tokens, themes and components.
 - `scripts/make-alarm-sound.js`: regenerates `assets/sounds/alarm.wav`.
 - `src/familySync.ts`: sends updates to the family alerts server.
 - `server/`: the family alerts server, a Cloudflare Worker. `server/src/engine.ts` holds all its decisions (grouping, missed doses, the nightly summary, bot commands), reusing `src/logic.ts`. Run `npm test` in `server/` to test it.

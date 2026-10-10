@@ -1,23 +1,52 @@
+// Only the four weights the app uses, so the other ten aren't bundled.
+import { AtkinsonHyperlegibleNext_400Regular } from '@expo-google-fonts/atkinson-hyperlegible-next/400Regular';
+import { AtkinsonHyperlegibleNext_500Medium } from '@expo-google-fonts/atkinson-hyperlegible-next/500Medium';
+import { AtkinsonHyperlegibleNext_700Bold } from '@expo-google-fonts/atkinson-hyperlegible-next/700Bold';
+import { AtkinsonHyperlegibleNext_800ExtraBold } from '@expo-google-fonts/atkinson-hyperlegible-next/800ExtraBold';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Linking, ScrollView, Share, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { HistoryModal } from './src/components/HistoryModal';
-import { MedCard } from './src/components/MedCard';
-import { MedFormModal } from './src/components/MedFormModal';
-import { SettingsModal } from './src/components/SettingsModal';
-import { TakenEarlierModal } from './src/components/TakenEarlierModal';
-import { Button, colors } from './src/components/ui';
 import { familyEnabled, fetchInviteLink, syncToServer } from './src/familySync';
-import { DEFAULT_SETTINGS, doseWarning, formatTime, getStatus, newId, pruneDoses } from './src/logic';
+import {
+  cardText,
+  DEFAULT_SETTINGS,
+  doseWarning,
+  formatTime,
+  getStatus,
+  isNightTime,
+  newId,
+  pruneDoses,
+  type CardState,
+} from './src/logic';
 import { rescheduleAll, scheduleTestAlarm, setupNotifications } from './src/notifications';
+import { HistorySheet } from './src/screens/HistorySheet';
+import { MedCard } from './src/screens/MedCard';
+import { MedFormSheet } from './src/screens/MedFormSheet';
+import { CarerSheet, SettingsSheet } from './src/screens/SettingsSheet';
+import { TakenEarlierSheet } from './src/screens/TakenEarlierSheet';
 import { loadAll, saveDoses, saveMeds, saveSettings } from './src/storage';
-import type { DoseRecord, FamilyStatus, Medication, Settings } from './src/types';
+import type { DoseRecord, FamilyStatus, Medication, MedStatus, Settings } from './src/types';
+import { Button, Card, ConfirmSheet, Hint, SectionHeader, UndoBar, type Confirmation } from './src/ui/components';
+import { ThemeProvider, useTheme } from './src/ui/theme';
+import { palettes, space, type, type ThemeId } from './src/ui/tokens';
+
+type SheetName = 'settings' | 'carer' | 'history' | 'form' | null;
+
+const UNDO_MS = 30 * 1000;
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    AtkinsonHyperlegibleNext_400Regular,
+    AtkinsonHyperlegibleNext_500Medium,
+    AtkinsonHyperlegibleNext_700Bold,
+    AtkinsonHyperlegibleNext_800ExtraBold,
+  });
   return (
     <SafeAreaProvider>
-      <Home />
+      {/* If the font can't load, carry on with the system font rather than showing nothing. */}
+      {fontsLoaded || fontError ? <Home /> : <View style={{ flex: 1, backgroundColor: palettes.day.canvas }} />}
     </SafeAreaProvider>
   );
 }
@@ -30,11 +59,10 @@ function Home() {
   const [now, setNow] = useState(Date.now());
   const [notificationsAllowed, setNotificationsAllowed] = useState(true);
 
+  const [sheet, setSheet] = useState<SheetName>(null);
   const [editing, setEditing] = useState<Medication | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
   const [earlierFor, setEarlierFor] = useState<Medication | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [undo, setUndo] = useState<{ dose: DoseRecord; name: string } | null>(null);
   const [familyStatus, setFamilyStatus] = useState<FamilyStatus | null>(null);
 
@@ -50,7 +78,7 @@ function Home() {
     })();
   }, []);
 
-  // Keep the countdowns on screen up to date.
+  // Keep the clock and countdowns up to date.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30 * 1000);
     return () => clearInterval(timer);
@@ -66,7 +94,7 @@ function Home() {
       .catch((e) => console.warn('Failed to schedule notifications', e));
   }, []);
 
-  // Family alerts: send the latest data to the server. Chained like rescheduling so updates stay in order.
+  // Family alerts: send the latest data to the server, in order.
   const syncing = useRef(Promise.resolve());
   const syncFamily = useCallback(() => {
     const { meds, doses, settings } = latest.current;
@@ -92,14 +120,14 @@ function Home() {
     syncFamily();
   }, [loaded, meds, doses, settings, reschedule, syncFamily]);
 
-  // If the last update didn't get through (e.g. no signal), keep trying while the app is open.
+  // If the last family update didn't get through (e.g. no signal), keep trying while the app is open.
   useEffect(() => {
     if (!familyStatus || familyStatus.ok) return;
     const timer = setTimeout(syncFamily, 2 * 60 * 1000);
     return () => clearTimeout(timer);
   }, [familyStatus, syncFamily]);
 
-  // When the app comes back to the front, refresh the clock and the schedule.
+  // When the app comes back to the front, refresh the clock, the schedule and the family server.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
@@ -115,7 +143,7 @@ function Home() {
 
   useEffect(() => {
     if (!undo) return;
-    const timer = setTimeout(() => setUndo(null), 15 * 1000);
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
     return () => clearTimeout(timer);
   }, [undo]);
 
@@ -127,97 +155,75 @@ function Home() {
       setEarlierFor(null);
       setNow(Date.now());
     };
-
     const warning = doseWarning(med, doses, takenAt, settings);
-    if (warning) {
-      Alert.alert(warning.title, warning.message, [
-        { text: "Don't log it", style: 'cancel' },
-        { text: 'I already took it - log it', style: 'destructive', onPress: record },
-      ]);
-      return;
-    }
-    record();
+    if (!warning) return record();
+    setEarlierFor(null);
+    setConfirmation({
+      title: warning.title,
+      message: warning.message,
+      tone: 'caution',
+      cancelLabel: "Don't log it",
+      confirmLabel: 'I already took it, log it',
+      onConfirm: record,
+    });
   };
 
   const saveMed = (med: Medication) => {
     setMeds((prev) => (prev.some((m) => m.id === med.id) ? prev.map((m) => (m.id === med.id ? med : m)) : [...prev, med]));
-    setFormOpen(false);
+    setSheet('carer');
   };
 
-  const deleteMed = (med: Medication) => {
-    setMeds((prev) => prev.filter((m) => m.id !== med.id));
-    setFormOpen(false);
-  };
+  const removeMed = (med: Medication) =>
+    setConfirmation({
+      title: `Remove ${med.name}?`,
+      message: 'It will no longer appear or send reminders. Past doses stay in the history.',
+      tone: 'danger',
+      cancelLabel: 'Keep it',
+      confirmLabel: 'Remove this medicine',
+      onConfirm: () => {
+        setMeds((prev) => prev.filter((m) => m.id !== med.id));
+        setSheet('carer');
+      },
+    });
 
-  const openForm = (med: Medication | null) => {
-    setEditing(med);
-    setFormOpen(true);
-  };
+  const removeDose = (dose: DoseRecord, name: string) =>
+    setConfirmation({
+      title: 'Remove this entry?',
+      message: `${name} at ${formatTime(dose.takenAt)}. Only remove it if it was logged by mistake.`,
+      tone: 'danger',
+      cancelLabel: 'Keep it',
+      confirmLabel: 'Remove this entry',
+      onConfirm: () => setDoses((prev) => prev.filter((d) => d.id !== dose.id)),
+    });
 
-  if (!loaded) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  const themeId: ThemeId =
+    settings.appearance === 'auto' ? (isNightTime(now, settings) ? 'night' : 'day') : settings.appearance;
+
+  if (!loaded) return <View style={{ flex: 1, backgroundColor: palettes[themeId].canvas }} />;
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>My Medication</Text>
-          <Text style={styles.clock}>Now: {formatTime(now)}</Text>
-        </View>
-        <Button title="Settings" kind="link" onPress={() => setSettingsOpen(true)} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.list}>
-        {!notificationsAllowed && (
-          <View style={styles.warning}>
-            <Text style={styles.warningText}>
-              Notifications are turned off, so reminders and alarms won't work. Please allow notifications for this app.
-            </Text>
-            <Button title="Open phone settings" kind="secondary" onPress={() => Linking.openSettings()} />
-          </View>
-        )}
-
-        {meds.length === 0 && (
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No medication yet</Text>
-            <Text style={styles.emptyText}>
-              Add each tablet with the minimum and maximum time between doses. The app will tell you when it's OK to
-              take the next one, and sound an alarm if one is missed.
-            </Text>
-          </View>
-        )}
-
-        {meds.map((med) => (
-          <MedCard
-            key={med.id}
-            med={med}
-            now={now}
-            status={getStatus(med, doses, now, settings)}
-            settings={settings}
-            onTake={() => logDose(med, Date.now())}
-            onTakeEarlier={() => {
-              setNow(Date.now());
-              setEarlierFor(med);
-            }}
-            onEdit={() => openForm(med)}
-          />
-        ))}
-
-        <Button title="+ Add medication" kind="secondary" onPress={() => openForm(null)} style={{ marginBottom: 12 }} />
-        <Button title="History" kind="secondary" onPress={() => setHistoryOpen(true)} />
-      </ScrollView>
+    <ThemeProvider id={themeId}>
+      <Today
+        meds={meds}
+        doses={doses}
+        settings={settings}
+        now={now}
+        notificationsAllowed={notificationsAllowed}
+        onTake={(m) => logDose(m, Date.now())}
+        onTakeEarlier={(m) => {
+          setNow(Date.now());
+          setEarlierFor(m);
+        }}
+        onOpenSettings={() => setSheet('settings')}
+        onOpenCarer={() => setSheet('carer')}
+        onOpenHistory={() => setSheet('history')}
+      />
 
       {undo && (
-        <View style={styles.toast}>
-          <Text style={styles.toastText}>
-            Logged {undo.name} at {formatTime(undo.dose.takenAt)}
-          </Text>
-          <Button
-            title="Undo"
-            kind="link"
-            textColor="#90CAF9"
-            style={{ marginLeft: 8 }}
-            onPress={() => {
+        <View style={{ position: 'absolute', left: space[4], right: space[4], bottom: space[6] }}>
+          <UndoBar
+            message={`${undo.name} logged at ${formatTime(undo.dose.takenAt)}`}
+            onUndo={() => {
               setDoses((prev) => prev.filter((d) => d.id !== undo.dose.id));
               setUndo(null);
             }}
@@ -225,78 +231,162 @@ function Home() {
         </View>
       )}
 
-      <MedFormModal
-        visible={formOpen}
-        med={editing}
-        usedColors={meds.map((m) => m.color)}
-        settings={settings}
-        onSave={saveMed}
-        onDelete={deleteMed}
-        onClose={() => setFormOpen(false)}
-      />
-      <TakenEarlierModal med={earlierFor} now={now} onPick={logDose} onClose={() => setEarlierFor(null)} />
-      <HistoryModal
-        visible={historyOpen}
-        meds={meds}
-        doses={doses}
-        now={now}
-        onDelete={(dose) => setDoses((prev) => prev.filter((d) => d.id !== dose.id))}
-        onClose={() => setHistoryOpen(false)}
-      />
-      <SettingsModal
-        visible={settingsOpen}
+      <TakenEarlierSheet med={earlierFor} now={now} onPick={logDose} onClose={() => setEarlierFor(null)} />
+      <HistorySheet visible={sheet === 'history'} meds={meds} doses={doses} now={now} onRemove={removeDose} onClose={() => setSheet(null)} />
+      <SettingsSheet
+        visible={sheet === 'settings'}
         settings={settings}
         onChange={setSettings}
+        onOpenCarer={() => setSheet('carer')}
+        onTestAlarm={() => {
+          scheduleTestAlarm()
+            .then(() => Alert.alert('Test alarm set', 'It will go off in 5 seconds. Try locking the phone.'))
+            .catch(() => Alert.alert('Could not set the test alarm', 'Check notifications are allowed for this app.'));
+        }}
+        onClose={() => setSheet(null)}
+      />
+      <CarerSheet
+        visible={sheet === 'carer'}
+        meds={meds}
+        settings={settings}
+        onChange={setSettings}
+        onEditMed={(m) => {
+          setEditing(m);
+          setSheet('form');
+        }}
+        onAddMed={() => {
+          setEditing(null);
+          setSheet('form');
+        }}
         familyStatus={familyStatus}
         onFamilyTest={syncFamily}
         onShareInvite={() => {
           fetchInviteLink(settings.family)
             .then((link) =>
-              Share.share({
-                message: `Tap this link to get Telegram updates about ${settings.family.name}'s medication: ${link}`,
-              }),
+              Share.share({ message: `Tap this link to get Telegram updates about ${settings.family.name}'s medication: ${link}` }),
             )
             .catch((e: Error) => Alert.alert('Could not get the invite link', e.message));
         }}
-        onTestAlarm={() => {
-          scheduleTestAlarm()
-            .then(() => Alert.alert('Test alarm set', 'It will go off in 5 seconds. Try locking the phone.'))
-            .catch(() => Alert.alert('Could not set the test alarm', 'Check notifications are allowed.'));
-        }}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => setSheet(null)}
       />
-    </SafeAreaView>
+      <MedFormSheet visible={sheet === 'form'} med={editing} settings={settings} onSave={saveMed} onRemove={removeMed} onClose={() => setSheet('carer')} />
+      <ConfirmSheet confirmation={confirmation} onClose={() => setConfirmation(null)} />
+    </ThemeProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  title: { fontSize: 30, fontWeight: '800', color: colors.text },
-  clock: { fontSize: 18, color: colors.muted },
-  list: { padding: 16, paddingBottom: 96 },
-  warning: { backgroundColor: '#FDE3E3', borderRadius: 12, padding: 14, marginBottom: 16, gap: 10 },
-  warningText: { fontSize: 17, color: colors.danger, fontWeight: '600' },
-  empty: { backgroundColor: colors.card, borderRadius: 16, padding: 20, marginBottom: 16 },
-  emptyTitle: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 8 },
-  emptyText: { fontSize: 18, color: colors.muted, lineHeight: 26 },
-  toast: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 32,
-    backgroundColor: '#263238',
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingLeft: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  toastText: { color: '#fff', fontSize: 17, flex: 1 },
-});
+// ---------- The Today screen ----------
+
+const SECTIONS: { title: string; states: CardState[] }[] = [
+  { title: 'Take now', states: ['overdue', 'due'] },
+  { title: 'Later today', states: ['wait'] },
+  { title: 'If needed', states: ['asNeeded'] },
+  { title: 'Done for today', states: ['done'] },
+];
+
+const STATE_ORDER: CardState[] = ['overdue', 'due', 'wait', 'asNeeded', 'done'];
+
+/** Most urgent first: overdue, then by the time each one is due or allowed. */
+function sortKey(st: MedStatus): number {
+  return st.kind === 'wait' ? (st.canTakeAt ?? Infinity) : (st.dueBy ?? Infinity);
+}
+
+function Today({
+  meds,
+  doses,
+  settings,
+  now,
+  notificationsAllowed,
+  onTake,
+  onTakeEarlier,
+  onOpenSettings,
+  onOpenCarer,
+  onOpenHistory,
+}: {
+  meds: Medication[];
+  doses: DoseRecord[];
+  settings: Settings;
+  now: number;
+  notificationsAllowed: boolean;
+  onTake: (m: Medication) => void;
+  onTakeEarlier: (m: Medication) => void;
+  onOpenSettings: () => void;
+  onOpenCarer: () => void;
+  onOpenHistory: () => void;
+}) {
+  const { c, id } = useTheme();
+  const items = meds
+    .map((med) => {
+      const status = getStatus(med, doses, now, settings);
+      return { med, status, state: cardText(med, status, now, settings).state };
+    })
+    .sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state) || sortKey(a.status) - sortKey(b.status));
+
+  const date = new Date(now).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>
+      <StatusBar style={id === 'night' ? 'light' : 'dark'} />
+      <ScrollView contentContainerStyle={{ padding: space[4], paddingBottom: 140 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space[4], flexWrap: 'wrap' }}>
+          <View style={{ flexShrink: 1 }}>
+            <Text accessibilityRole="header" style={[type.clock, { color: c.ink }]}>
+              {formatTime(now)}
+            </Text>
+            <Text style={[type.body, { color: c.inkMuted }]}>{date}</Text>
+          </View>
+          <Button title="Settings" icon="gear" variant="secondary" block={false} onPress={onOpenSettings} />
+        </View>
+
+        {!notificationsAllowed && (
+          <Card style={{ marginTop: space[5], backgroundColor: c.statusOverdueTint, borderColor: c.statusOverdue }}>
+            <Text style={[type.bodyStrong, { color: c.statusOverdue }]}>
+              Notifications are turned off, so reminders and alarms won&apos;t work.
+            </Text>
+            <Button title="Open phone settings" variant="secondary" onPress={() => Linking.openSettings()} />
+          </Card>
+        )}
+
+        {meds.length === 0 && (
+          <Card style={{ marginTop: space[6] }}>
+            <Text style={[type.status, { color: c.ink }]}>No medicines yet</Text>
+            <Text style={[type.body, { color: c.inkMuted }]}>
+              Add each medicine with its timings. The app shows when it&apos;s OK to take the next dose and sounds an alarm if one is missed.
+            </Text>
+            <Button title="Add a medicine" icon="plus" onPress={onOpenCarer} />
+          </Card>
+        )}
+
+        {SECTIONS.map((section) => {
+          const inSection = items.filter((i) => section.states.includes(i.state));
+          if (inSection.length === 0) return null;
+          return (
+            <View key={section.title}>
+              <SectionHeader title={section.title} count={inSection.length} />
+              <View style={{ gap: space[5] }}>
+                {inSection.map(({ med, status }) => (
+                  <MedCard
+                    key={med.id}
+                    med={med}
+                    status={status}
+                    now={now}
+                    settings={settings}
+                    onTake={() => onTake(med)}
+                    onTakeEarlier={() => onTakeEarlier(med)}
+                  />
+                ))}
+              </View>
+            </View>
+          );
+        })}
+
+        {meds.length > 0 && (
+          <View style={{ marginTop: space[6], gap: space[2] }}>
+            <Button title="History" icon="history" variant="secondary" onPress={onOpenHistory} />
+            <Hint>Everything logged in the last 7 days.</Hint>
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

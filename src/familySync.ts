@@ -21,7 +21,7 @@ export async function syncToServer(
 ): Promise<{ subscribers: number }> {
   const f = settings.family;
   // The server address and key stay on the phone.
-  const { family: _family, ...timing } = settings;
+  const { family: _family, appearance: _appearance, ...timing } = settings;
   const res = await fetch(`${base(f)}/sync`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...auth(f) },
