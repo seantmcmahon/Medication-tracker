@@ -88,7 +88,21 @@ jobs:
       - name: Connect the Telegram bot
         if: steps.secrets.outputs.ready == 'true'
         run: |
-          curl -fsS -X POST "${{ steps.deploy.outputs.url }}/admin/setup" -H "Authorization: Bearer $APP_KEY"
+          # Newly stored secrets can take a few seconds to reach the server, so retry for up to a minute.
+          key="${APP_KEY#"${APP_KEY%%[![:space:]]*}"}"
+          key="${key%"${key##*[![:space:]]}"}"
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -fsS -X POST "${{ steps.deploy.outputs.url }}/admin/setup" -H "Authorization: Bearer $key"; then
+              connected=yes
+              break
+            fi
+            echo "Not ready yet (attempt $attempt), retrying in 5 seconds…"
+            sleep 5
+          done
+          if [ "$connected" != "yes" ]; then
+            echo "::error::The server keeps rejecting the key. Check the APP_KEY secret, then run this workflow again."
+            exit 1
+          fi
           {
             echo "### Family alerts server is live"
             echo ""

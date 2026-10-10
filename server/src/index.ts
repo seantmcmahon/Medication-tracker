@@ -30,8 +30,10 @@ async function sha256(text: string): Promise<string> {
 }
 
 /** The invite code and webhook secret are derived from APP_KEY so there are fewer secrets to set up. */
-const joinCode = async (env: Env) => (await sha256(`${env.APP_KEY}:join`)).slice(0, 16);
-const webhookSecret = async (env: Env) => (await sha256(`${env.APP_KEY}:webhook`)).slice(0, 32);
+// Spaces at either end of the key are ignored everywhere, since they're easy to paste by mistake.
+const appKey = (env: Env) => (env.APP_KEY ?? '').trim();
+const joinCode = async (env: Env) => (await sha256(`${appKey(env)}:join`)).slice(0, 16);
+const webhookSecret = async (env: Env) => (await sha256(`${appKey(env)}:webhook`)).slice(0, 32);
 
 async function telegram(env: Env, method: string, body: unknown): Promise<Response> {
   try {
@@ -107,9 +109,9 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 function authorised(request: Request, env: Env): boolean {
-  const header = request.headers.get('authorization') ?? '';
-  const expected = `Bearer ${env.APP_KEY}`;
-  if (!env.APP_KEY || header.length !== expected.length) return false;
+  const header = (request.headers.get('authorization') ?? '').trim();
+  const expected = `Bearer ${appKey(env)}`;
+  if (!appKey(env) || header.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < header.length; i++) diff |= header.charCodeAt(i) ^ expected.charCodeAt(i);
   return diff === 0;
