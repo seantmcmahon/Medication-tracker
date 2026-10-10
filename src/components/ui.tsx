@@ -25,9 +25,11 @@ type ButtonProps = {
   style?: ViewStyle;
   big?: boolean;
   disabled?: boolean;
+  /** Overrides the text colour, e.g. for a link on a dark background. */
+  textColor?: string;
 };
 
-export function Button({ title, onPress, kind = 'primary', style, big, disabled }: ButtonProps) {
+export function Button({ title, onPress, kind = 'primary', style, big, disabled, textColor }: ButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -49,6 +51,7 @@ export function Button({ title, onPress, kind = 'primary', style, big, disabled 
           styles.buttonText,
           (kind === 'secondary' || kind === 'link') && { color: colors.primary },
           big && { fontSize: 22 },
+          textColor !== undefined && { color: textColor },
         ]}
       >
         {title}

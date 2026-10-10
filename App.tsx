@@ -189,6 +189,7 @@ function Home() {
           <Button
             title="Undo"
             kind="link"
+            textColor="#90CAF9"
             style={{ marginLeft: 8 }}
             onPress={() => {
               setDoses((prev) => prev.filter((d) => d.id !== undo.dose.id));

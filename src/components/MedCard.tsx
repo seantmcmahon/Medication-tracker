@@ -21,6 +21,7 @@ export function MedCard({ med, status, now, onTake, onTakeEarlier, onEdit }: Pro
         <View style={{ flex: 1 }}>
           <Text style={styles.name}>{med.name}</Text>
           {!!med.dose && <Text style={styles.dose}>{med.dose}</Text>}
+          {!!med.notes && <Text style={styles.notes}>{med.notes}</Text>}
         </View>
         <View style={[styles.pill, { backgroundColor: tone.bg }]}>
           <Text style={[styles.pillText, { color: tone.fg }]}>{tone.label}</Text>
@@ -95,6 +96,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12, gap: 8 },
   name: { fontSize: 26, fontWeight: '800', color: colors.text },
   dose: { fontSize: 18, color: colors.muted, marginTop: 2 },
+  notes: { fontSize: 17, color: colors.text, marginTop: 4, fontStyle: 'italic' },
   pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   pillText: { fontSize: 16, fontWeight: '800' },
   statusBox: { borderRadius: 12, padding: 12, marginBottom: 12 },
