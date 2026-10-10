@@ -1,20 +1,21 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { describeStatus } from '../logic';
-import type { Medication, MedStatus } from '../types';
+import type { Medication, MedStatus, Settings } from '../types';
 import { Button, colors } from './ui';
 
 type Props = {
   med: Medication;
   status: MedStatus;
   now: number;
+  settings: Settings;
   onTake: () => void;
   onTakeEarlier: () => void;
   onEdit: () => void;
 };
 
-export function MedCard({ med, status, now, onTake, onTakeEarlier, onEdit }: Props) {
+export function MedCard({ med, status, now, settings, onTake, onTakeEarlier, onEdit }: Props) {
   const tone = colors[status.kind];
-  const text = describeStatus(med, status, now);
+  const text = describeStatus(med, status, now, settings);
 
   return (
     <View style={[styles.card, { borderLeftColor: med.color }]}>

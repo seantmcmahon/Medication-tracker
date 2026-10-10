@@ -227,7 +227,12 @@ function mealStatus(med: Medication, mine: DoseRecord[], now: number, s: Setting
 }
 
 /** Text for the medication's card: one headline and a few detail lines. */
-export function describeStatus(med: Medication, st: MedStatus, now: number): { headline: string; details: string[] } {
+export function describeStatus(
+  med: Medication,
+  st: MedStatus,
+  now: number,
+  s: Settings,
+): { headline: string; details: string[] } {
   const details: string[] = [];
 
   if (st.meal) {
@@ -293,7 +298,9 @@ export function describeStatus(med: Medication, st: MedStatus, now: number): { h
     details.push(`Taken ${st.takenLast24h} of ${med.maxPerDay} allowed in the last 24 hours`);
   }
   if (st.kind === 'wait' && st.dueBy !== null) {
-    details.push(`${st.today ? 'Take by' : 'Alarm if not taken by'} ${formatDayTime(st.dueBy, now)}`);
+    // Show when the alarm will really sound, which is later if it falls overnight.
+    const alarmAt = deferPastQuietHours(st.dueBy, s);
+    details.push(`${st.today ? 'Take by' : 'Alarm if not taken by'} ${formatDayTime(alarmAt, now)}`);
   }
   return { headline, details };
 }

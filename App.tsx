@@ -164,6 +164,7 @@ function Home() {
             med={med}
             now={now}
             status={getStatus(med, doses, now, settings)}
+            settings={settings}
             onTake={() => logDose(med, Date.now())}
             onTakeEarlier={() => {
               setNow(Date.now());

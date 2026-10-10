@@ -119,7 +119,7 @@ test('first dose of the day is due early enough to fit all of them in', () => {
   assert.equal(s.kind, 'ready');
   assert.equal(s.dueBy, at(11, 30), '11:30pm minus three 4-hour gaps');
   assert.deepEqual(s.today, { taken: 0, target: 4, cutoff: at(23, 30), fits: 4 });
-  assert.equal(describeStatus(paced(), s, at(9)).headline, 'OK to take — take by 11:30am');
+  assert.equal(describeStatus(paced(), s, at(9), S).headline, 'OK to take — take by 11:30am');
 });
 
 test('pace deadline wins over the maximum gap when he is behind', () => {
@@ -139,7 +139,7 @@ test('dragging it out: warns that not all doses fit and alarms', () => {
   const s = getStatus(paced(), [dose(at(11)), dose(at(16, 30))], at(21), S);
   assert.equal(s.kind, 'overdue');
   assert.equal(s.today!.fits, 1);
-  assert.ok(describeStatus(paced(), s, at(21)).details.some((d) => d.includes('Only 1 more fit in before 11:30pm')));
+  assert.ok(describeStatus(paced(), s, at(21), S).details.some((d) => d.includes('Only 1 more fit in before 11:30pm')));
 });
 
 test('done for today, with the next alarm for tomorrow', () => {
@@ -147,7 +147,7 @@ test('done for today, with the next alarm for tomorrow', () => {
   const s = getStatus(paced(), doses, at(21), S);
   assert.equal(s.kind, 'done');
   assert.equal(s.dueBy, at(11, 30, 11));
-  assert.equal(describeStatus(paced(), s, at(21)).headline, 'All 4 taken today ✓');
+  assert.equal(describeStatus(paced(), s, at(21), S).headline, 'All 4 taken today ✓');
   const plan = planNotifications([paced()], doses, S, at(21));
   assert.equal(plan.filter((p) => p.kind === 'ready').length, 0);
   assert.equal(plan[0].at, at(11, 30, 11));
@@ -212,4 +212,10 @@ test('old saved medication without a schedule still works', () => {
   assert.equal(old.schedule, 'interval');
   assert.equal(old.dailyTarget, null);
   assert.deepEqual(old.meals, []);
+});
+
+test('card shows the real alarm time when it falls overnight', () => {
+  const s = getStatus(med(), [dose(at(18))], at(21), S);
+  assert.equal(s.dueBy, at(0, 0, 11));
+  assert.ok(describeStatus(med(), s, at(21), S).details.includes('Alarm if not taken by Tomorrow 7:30am'));
 });
