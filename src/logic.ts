@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mealGraceMinutes: 60,
   alarmRepeatMinutes: 15,
   alarmRepeatCount: 8,
+  warnBeforeMinutes: [30, 15],
   family: { serverUrl: '', key: '', name: 'Dad', bufferMinutes: 5, lateMinutes: 30 },
 };
 
@@ -346,7 +347,7 @@ export function doseWarning(
 export type PlannedNotification = {
   id: string;
   medId: string;
-  kind: 'ready' | 'overdue';
+  kind: 'ready' | 'warning' | 'overdue';
   at: number;
   title: string;
   body: string;
@@ -387,6 +388,27 @@ export function planNotifications(
           body: meal
             ? `Take ${label} with ${meal}.`
             : `It's been long enough since the last dose. You can take ${label} when you need it.`,
+        });
+      }
+    }
+
+    // Warnings before the alarm, counted back from when it will actually sound. None before he's
+    // allowed to take it (the "can take it" reminder covers that), and none overnight.
+    if (alarmTimes.length > 0 && status.dueBy !== null) {
+      const alarmAt = deferPastQuietHours(status.dueBy, settings);
+      const earliest = status.remindAt ?? status.canTakeAt ?? -Infinity;
+      for (const mins of [...settings.warnBeforeMinutes].sort((a, b) => b - a)) {
+        const at = alarmAt - mins * MINUTE;
+        if (at <= now || at <= earliest || isInQuietHours(at, settings)) continue;
+        plan.push({
+          id: `${med.id}:warning:${mins}`,
+          medId: med.id,
+          kind: 'warning',
+          at,
+          title: `${med.name}: take within ${formatDuration(mins * MINUTE)}`,
+          body: meal
+            ? `Take ${label} with ${meal}. The alarm goes off at ${formatTime(alarmAt)} if it hasn't been logged.`
+            : `Take ${label} by ${formatTime(alarmAt)}. The alarm goes off then if it hasn't been logged.`,
         });
       }
     }

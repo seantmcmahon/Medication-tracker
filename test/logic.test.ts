@@ -150,7 +150,14 @@ test('done for today, with the next alarm for tomorrow', () => {
   assert.equal(describeStatus(paced(), s, at(21), S).headline, 'All 4 taken today ✓');
   const plan = planNotifications([paced()], doses, S, at(21));
   assert.equal(plan.filter((p) => p.kind === 'ready').length, 0);
-  assert.equal(plan[0].at, at(11, 30, 11));
+  assert.deepEqual(
+    plan.slice(0, 3).map((p) => [p.kind, p.at]),
+    [
+      ['warning', at(11, 0, 11)],
+      ['warning', at(11, 15, 11)],
+      ['overdue', at(11, 30, 11)],
+    ],
+  );
 });
 
 test('a dose just after midnight counts towards the day before', () => {
@@ -203,8 +210,14 @@ test('plans a meal-time reminder then alarms', () => {
   assert.equal(plan[0].kind, 'ready');
   assert.equal(plan[0].at, at(18));
   assert.equal(plan[0].title, 'Time for Naproxen');
-  assert.equal(plan[1].kind, 'overdue');
-  assert.equal(plan[1].at, at(19));
+  assert.deepEqual(
+    plan.slice(1, 4).map((p) => [p.kind, p.at]),
+    [
+      ['warning', at(18, 30)],
+      ['warning', at(18, 45)],
+      ['overdue', at(19)],
+    ],
+  );
 });
 
 test('old saved medication without a schedule still works', () => {
@@ -218,4 +231,61 @@ test('card shows the real alarm time when it falls overnight', () => {
   const s = getStatus(med(), [dose(at(18))], at(21), S);
   assert.equal(s.dueBy, at(0, 0, 11));
   assert.ok(describeStatus(med(), s, at(21), S).details.includes('Alarm if not taken by Tomorrow 7:30am'));
+});
+
+// ---------- Warnings before the alarm ----------
+
+test('warns 30 and 15 minutes before the alarm by default', () => {
+  const plan = planNotifications([med()], [dose(base)], noQuiet, base + MINUTE);
+  assert.deepEqual(
+    plan.slice(0, 4).map((p) => [p.kind, p.at]),
+    [
+      ['ready', base + 4 * HOUR],
+      ['warning', base + 6 * HOUR - 30 * MINUTE],
+      ['warning', base + 6 * HOUR - 15 * MINUTE],
+      ['overdue', base + 6 * HOUR],
+    ],
+  );
+  assert.equal(plan[1].title, 'Paracetamol: take within 30 min');
+  assert.equal(plan[1].body, 'Take Paracetamol (2 tablets) by 6:00pm. The alarm goes off then if it hasn\'t been logged.');
+});
+
+test('last dose of the day: reminder, warnings at 11pm and 11:15pm, one alarm at 11:30pm', () => {
+  const doses = [dose(at(8, 0)), dose(at(13, 0)), dose(at(18, 6))];
+  const plan = planNotifications([paced()], doses, S, at(18, 7));
+  assert.deepEqual(
+    plan.map((p) => [p.kind, p.at]),
+    [
+      ['ready', at(22, 6)],
+      ['warning', at(23, 0)],
+      ['warning', at(23, 15)],
+      // The alarm's repeats would all be after 11:30pm, so they're held overnight.
+      ['overdue', at(23, 30)],
+    ],
+  );
+});
+
+test('no warning before he is allowed to take it', () => {
+  // Allowed after 4 hours, alarm at 4 hours 20: the 30-minute warning would come too early, the 15 is fine.
+  const plan = planNotifications([med({ minHours: 4, maxHours: 4 + 20 / 60 })], [dose(base)], noQuiet, base + MINUTE);
+  assert.deepEqual(
+    plan.filter((p) => p.kind === 'warning').map((p) => p.at),
+    [base + 4 * HOUR + 5 * MINUTE],
+  );
+});
+
+test('warnings can be turned off or changed', () => {
+  const off = planNotifications([med()], [dose(base)], { ...noQuiet, warnBeforeMinutes: [] }, base + MINUTE);
+  assert.equal(off.filter((p) => p.kind === 'warning').length, 0);
+  const three = planNotifications([med()], [dose(base)], { ...noQuiet, warnBeforeMinutes: [15, 60, 30] }, base + MINUTE);
+  assert.deepEqual(
+    three.filter((p) => p.kind === 'warning').map((p) => (base + 6 * HOUR - p.at) / MINUTE),
+    [60, 30, 15],
+  );
+});
+
+test('no warnings overnight when the alarm is held until morning', () => {
+  // Due at 3am, alarm held until 7:30am; warnings at 7:00 and 7:15 would still be overnight.
+  const plan = planNotifications([med()], [dose(at(21))], S, at(21, 1));
+  assert.equal(plan.filter((p) => p.kind === 'warning').length, 0);
 });

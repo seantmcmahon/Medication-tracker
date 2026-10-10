@@ -8,6 +8,7 @@ Each medication is taken one of two ways.
 
 - **Minimum hours between doses**: the app shows a countdown, and sends a notification once it's OK to take the next dose.
 - **Maximum hours between doses** (optional): if no dose has been logged by then, a **loud alarm** goes off and keeps repeating (every 15 minutes by default) until "I've taken it" is tapped.
+- **Warnings before the alarm**: gentle reminders 30 and 15 minutes before the alarm (change or turn off in Settings), so there's time to take it first.
 - **Doses to fit in each day** (optional): the app works backwards from the **"last doses by"** time (11:30pm by default) to the latest time each dose can be taken while leaving room for the rest. If he falls behind, the alarm goes off earlier, and the card warns him when not all the doses can fit in any more. Once they're all taken it shows "Done for today".
 - **Most doses in 24 hours** (optional): a hard limit, for things like paracetamol. The app won't say "OK to take" until a dose drops out of the rolling 24-hour window.
 

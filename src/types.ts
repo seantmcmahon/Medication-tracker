@@ -42,6 +42,8 @@ export type TimingSettings = {
   alarmRepeatMinutes: number;
   /** How many times the overdue alarm repeats after the first one. */
   alarmRepeatCount: number;
+  /** Gentle warnings this many minutes before the overdue alarm, e.g. [30, 15]. Empty = none. */
+  warnBeforeMinutes: number[];
 };
 
 export type Settings = TimingSettings & {

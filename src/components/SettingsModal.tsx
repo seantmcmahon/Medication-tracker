@@ -18,6 +18,16 @@ type Props = {
 
 const wrap = (m: number) => (m + 24 * 60) % (24 * 60);
 
+// Choices for "Warn before the alarm", from none to three warnings.
+const WARNING_PRESETS: number[][] = [[], [15], [30, 15], [60, 30, 15]];
+const warningLabel = (w: number[]) => (w.length === 0 ? 'Off' : `${[...w].sort((a, b) => b - a).join(', ')} min`);
+function stepWarnings(current: number[], dir: number): number[] {
+  const key = [...current].sort((a, b) => b - a).join(',');
+  const i = WARNING_PRESETS.findIndex((p) => p.join(',') === key);
+  const next = Math.min(WARNING_PRESETS.length - 1, Math.max(0, (i === -1 ? 2 : i) + dir));
+  return WARNING_PRESETS[next];
+}
+
 export function SettingsModal({
   visible,
   settings,
@@ -94,6 +104,15 @@ export function SettingsModal({
           onMinus={() => set({ alarmRepeatCount: Math.max(0, settings.alarmRepeatCount - 1) })}
           onPlus={() => set({ alarmRepeatCount: Math.min(12, settings.alarmRepeatCount + 1) })}
         />
+        <Stepper
+          label="Warn before the alarm"
+          value={warningLabel(settings.warnBeforeMinutes)}
+          onMinus={() => set({ warnBeforeMinutes: stepWarnings(settings.warnBeforeMinutes, -1) })}
+          onPlus={() => set({ warnBeforeMinutes: stepWarnings(settings.warnBeforeMinutes, 1) })}
+        />
+        <Text style={styles.hint}>
+          {"Gentle reminders before the alarm, so there's time to take it before the alarm goes off."}
+        </Text>
         <Button title="Test the alarm (in 5 seconds)" kind="secondary" onPress={onTestAlarm} style={{ marginTop: 8 }} />
       </View>
 
