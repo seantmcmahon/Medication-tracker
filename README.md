@@ -2,11 +2,20 @@
 
 A simple phone app to help someone keep track of tablets that have to be taken at different intervals through the day.
 
-For each medication you set:
+Each medication is taken one of two ways.
+
+**Every few hours.** For example, paracetamol every 4–6 hours:
 
 - **Minimum hours between doses**: the app shows a countdown, and sends a notification once it's OK to take the next dose.
 - **Maximum hours between doses** (optional): if no dose has been logged by then, a **loud alarm** goes off and keeps repeating (every 15 minutes by default) until "I've taken it" is tapped.
-- **Most doses in 24 hours** (optional): for things like paracetamol. The app won't say "OK to take" until a dose drops out of the rolling 24-hour window.
+- **Doses to fit in each day** (optional): the app works backwards from the **"last doses by"** time (11:30pm by default) to the latest time each dose can be taken while leaving room for the rest. If he falls behind, the alarm goes off earlier, and the card warns him when not all the doses can fit in any more. Once they're all taken it shows "Done for today".
+- **Most doses in 24 hours** (optional): a hard limit, for things like paracetamol. The app won't say "OK to take" until a dose drops out of the rolling 24-hour window.
+
+**At meal times.** For example, "one at breakfast and one at dinner":
+
+- Tick the meals: breakfast, lunch, dinner and/or bedtime. The rough times are set once in Settings.
+- He gets a reminder at the meal and an alarm if it's not taken within an hour. It's OK to take from an hour before the meal.
+- If he tries to take a second dose for the same meal, he gets a warning. A missed dose is shown as missed and isn't doubled up at the next meal.
 
 He taps one big **"I've taken it"** button after each tablet. There's also:
 
@@ -14,7 +23,7 @@ He taps one big **"I've taken it"** button after each tablet. There's also:
 - A **"Too soon"** warning if he tries to log a dose before the minimum gap is up.
 - **Undo** straight after logging, and a **History** screen where mistaken entries can be removed.
 - **Add / edit / remove** medication at any time as the prescription changes.
-- **Quiet hours** (off by default): alarms that would go off overnight wait until morning instead.
+- **No alarms overnight** (on by default): alarms that would go off between the "last doses by" time and the start of his day wait until the morning.
 - A **test alarm** button in Settings so you can check it's loud enough.
 
 Everything is stored on the phone itself. There's no account, no server and no internet needed.

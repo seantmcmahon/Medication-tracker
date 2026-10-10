@@ -14,6 +14,7 @@ export const colors = {
   ready: { bg: '#E3F5E6', fg: '#1B6E2A', label: 'OK to take' },
   never: { bg: '#E3F5E6', fg: '#1B6E2A', label: 'OK to take' },
   overdue: { bg: '#FDE3E3', fg: '#B71C1C', label: 'Take now!' },
+  done: { bg: '#E6EEF8', fg: '#1F4E8C', label: 'Done for today' },
 };
 
 export const MED_COLORS = ['#1565C0', '#2E7D32', '#6A1B9A', '#EF6C00', '#AD1457', '#00838F', '#5D4037'];

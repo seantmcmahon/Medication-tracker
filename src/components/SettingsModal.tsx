@@ -1,5 +1,5 @@
 import { StyleSheet, Switch, Text, View } from 'react-native';
-import { formatClock } from '../logic';
+import { formatClock, MEALS } from '../logic';
 import type { Settings } from '../types';
 import { Button, colors, Sheet } from './ui';
 
@@ -11,39 +11,56 @@ type Props = {
   onClose: () => void;
 };
 
-const STEP = 30;
 const wrap = (m: number) => (m + 24 * 60) % (24 * 60);
 
 export function SettingsModal({ visible, settings, onChange, onTestAlarm, onClose }: Props) {
   const set = (patch: Partial<Settings>) => onChange({ ...settings, ...patch });
+  const clockStepper = (label: string, key: 'dayStart' | 'lastDoseBy', step: number) => (
+    <Stepper
+      label={label}
+      value={formatClock(settings[key])}
+      onMinus={() => set({ [key]: wrap(settings[key] - step) })}
+      onPlus={() => set({ [key]: wrap(settings[key] + step) })}
+    />
+  );
 
   return (
     <Sheet visible={visible} title="Settings" onClose={onClose}>
       <View style={styles.card}>
-        <View style={styles.row}>
-          <Text style={[styles.title, { flex: 1 }]}>Quiet hours overnight</Text>
+        <Text style={styles.title}>Your day</Text>
+        <Text style={styles.hint}>
+          Medicines with a number of doses each day are paced so they all fit in between these times.
+        </Text>
+        {clockStepper('Day starts', 'dayStart', 30)}
+        {clockStepper('Last doses by', 'lastDoseBy', 30)}
+        <View style={[styles.row, { marginTop: 16 }]}>
+          <Text style={[styles.label, { flex: 1, fontWeight: '700' }]}>No alarms overnight</Text>
           <Switch value={settings.quietHoursEnabled} onValueChange={(v) => set({ quietHoursEnabled: v })} />
         </View>
         <Text style={styles.hint}>
-          Reminders and alarms that would go off during quiet hours wait until the end of quiet hours instead. Leave
-          this off if any medication must be taken during the night.
+          Reminders and alarms due between {formatClock(settings.lastDoseBy)} and {formatClock(settings.dayStart)} wait
+          until the morning. Turn this off if any medication must be taken during the night.
         </Text>
-        {settings.quietHoursEnabled && (
-          <>
-            <Stepper
-              label="Quiet from"
-              value={formatClock(settings.quietStart)}
-              onMinus={() => set({ quietStart: wrap(settings.quietStart - STEP) })}
-              onPlus={() => set({ quietStart: wrap(settings.quietStart + STEP) })}
-            />
-            <Stepper
-              label="Until"
-              value={formatClock(settings.quietEnd)}
-              onMinus={() => set({ quietEnd: wrap(settings.quietEnd - STEP) })}
-              onPlus={() => set({ quietEnd: wrap(settings.quietEnd + STEP) })}
-            />
-          </>
-        )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.title}>Meal times</Text>
+        <Text style={styles.hint}>Rough times for medicines taken with meals.</Text>
+        {MEALS.map((m) => (
+          <Stepper
+            key={m.key}
+            label={m.label}
+            value={formatClock(settings.mealTimes[m.key])}
+            onMinus={() => set({ mealTimes: { ...settings.mealTimes, [m.key]: wrap(settings.mealTimes[m.key] - 15) } })}
+            onPlus={() => set({ mealTimes: { ...settings.mealTimes, [m.key]: wrap(settings.mealTimes[m.key] + 15) } })}
+          />
+        ))}
+        <Stepper
+          label="Alarm if not taken within"
+          value={`${settings.mealGraceMinutes} min`}
+          onMinus={() => set({ mealGraceMinutes: Math.max(15, settings.mealGraceMinutes - 15) })}
+          onPlus={() => set({ mealGraceMinutes: Math.min(180, settings.mealGraceMinutes + 15) })}
+        />
       </View>
 
       <View style={styles.card}>

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { formatDayTime, formatDuration, formatTime } from '../logic';
+import { describeStatus } from '../logic';
 import type { Medication, MedStatus } from '../types';
 import { Button, colors } from './ui';
 
@@ -14,6 +14,7 @@ type Props = {
 
 export function MedCard({ med, status, now, onTake, onTakeEarlier, onEdit }: Props) {
   const tone = colors[status.kind];
+  const text = describeStatus(med, status, now);
 
   return (
     <View style={[styles.card, { borderLeftColor: med.color }]}>
@@ -29,8 +30,8 @@ export function MedCard({ med, status, now, onTake, onTakeEarlier, onEdit }: Pro
       </View>
 
       <View style={[styles.statusBox, { backgroundColor: tone.bg }]}>
-        <Text style={[styles.statusMain, { color: tone.fg }]}>{headline(status, now)}</Text>
-        {detail(med, status, now).map((line) => (
+        <Text style={[styles.statusMain, { color: tone.fg }]}>{text.headline}</Text>
+        {text.details.map((line) => (
           <Text key={line} style={styles.statusDetail}>
             {line}
           </Text>
@@ -49,35 +50,6 @@ export function MedCard({ med, status, now, onTake, onTakeEarlier, onEdit }: Pro
       </View>
     </View>
   );
-}
-
-function headline(s: MedStatus, now: number): string {
-  switch (s.kind) {
-    case 'never':
-      return 'No doses logged yet';
-    case 'wait':
-      return `Wait until ${formatTime(s.canTakeAt!)} (${formatDuration(s.canTakeAt! - now)})`;
-    case 'ready':
-      return s.dueBy !== null ? `OK to take — due by ${formatTime(s.dueBy)}` : 'OK to take if needed';
-    case 'overdue':
-      return `Overdue by ${formatDuration(now - s.dueBy!)}`;
-  }
-}
-
-function detail(med: Medication, s: MedStatus, now: number): string[] {
-  const lines: string[] = [];
-  if (s.lastTaken !== null) {
-    lines.push(`Last taken: ${formatDayTime(s.lastTaken, now)} (${formatDuration(now - s.lastTaken)} ago)`);
-  }
-  if (s.kind === 'wait' && s.limitedByDailyMax) {
-    lines.push(`Daily limit reached (${med.maxPerDay} in 24 hours)`);
-  } else if (med.maxPerDay !== null) {
-    lines.push(`Taken ${s.takenLast24h} of ${med.maxPerDay} allowed in the last 24 hours`);
-  }
-  if (s.kind === 'wait' && s.dueBy !== null) {
-    lines.push(`Alarm if not taken by ${formatDayTime(s.dueBy, now)}`);
-  }
-  return lines;
 }
 
 const styles = StyleSheet.create({

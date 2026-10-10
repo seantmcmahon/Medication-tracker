@@ -8,7 +8,7 @@ import { MedFormModal } from './src/components/MedFormModal';
 import { SettingsModal } from './src/components/SettingsModal';
 import { TakenEarlierModal } from './src/components/TakenEarlierModal';
 import { Button, colors } from './src/components/ui';
-import { DEFAULT_SETTINGS, formatDuration, formatTime, getStatus, newId, pruneDoses } from './src/logic';
+import { DEFAULT_SETTINGS, doseWarning, formatTime, getStatus, newId, pruneDoses } from './src/logic';
 import { rescheduleAll, scheduleTestAlarm, setupNotifications } from './src/notifications';
 import { loadAll, saveDoses, saveMeds, saveSettings } from './src/storage';
 import type { DoseRecord, Medication, Settings } from './src/types';
@@ -99,13 +99,9 @@ function Home() {
       setNow(Date.now());
     };
 
-    const status = getStatus(med, doses, takenAt);
-    if (status.kind === 'wait' && status.canTakeAt !== null) {
-      const reason = status.limitedByDailyMax
-        ? `You've already had ${med.maxPerDay} doses of ${med.name} in the last 24 hours.`
-        : `The last dose of ${med.name} was only ${formatDuration(takenAt - status.lastTaken!)} before this. ` +
-          `The minimum gap is ${formatDuration(med.minHours * 60 * 60 * 1000)}.`;
-      Alert.alert('⚠️ Too soon', `${reason}\n\nIt's OK to take from ${formatTime(status.canTakeAt)}.`, [
+    const warning = doseWarning(med, doses, takenAt, settings);
+    if (warning) {
+      Alert.alert(warning.title, warning.message, [
         { text: "Don't log it", style: 'cancel' },
         { text: 'I already took it - log it', style: 'destructive', onPress: record },
       ]);
@@ -167,7 +163,7 @@ function Home() {
             key={med.id}
             med={med}
             now={now}
-            status={getStatus(med, doses, now)}
+            status={getStatus(med, doses, now, settings)}
             onTake={() => logDose(med, Date.now())}
             onTakeEarlier={() => {
               setNow(Date.now());
@@ -203,6 +199,7 @@ function Home() {
         visible={formOpen}
         med={editing}
         usedColors={meds.map((m) => m.color)}
+        settings={settings}
         onSave={saveMed}
         onDelete={deleteMed}
         onClose={() => setFormOpen(false)}

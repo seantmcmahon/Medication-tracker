@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { newId } from '../logic';
-import type { Medication } from '../types';
+import { formatClock, MEALS, newId } from '../logic';
+import type { MealKey, Medication, Settings } from '../types';
 import { Button, colors, MED_COLORS, Sheet } from './ui';
 
 type Props = {
@@ -9,6 +9,7 @@ type Props = {
   /** Medication being edited, or null to add a new one. */
   med: Medication | null;
   usedColors: string[];
+  settings: Settings;
   onSave: (med: Medication) => void;
   onDelete: (med: Medication) => void;
   onClose: () => void;
@@ -24,40 +25,74 @@ export function MedFormModal(props: Props) {
   );
 }
 
-function MedForm({ med, usedColors, onSave, onDelete }: Props) {
+const optional = (n: number | null | undefined) => (n != null ? String(n) : '');
+
+function MedForm({ med, usedColors, settings, onSave, onDelete }: Props) {
   const [name, setName] = useState(med?.name ?? '');
   const [dose, setDose] = useState(med?.dose ?? '');
-  const [minHours, setMinHours] = useState(med ? String(med.minHours) : '');
-  const [maxHours, setMaxHours] = useState(med?.maxHours != null ? String(med.maxHours) : '');
-  const [maxPerDay, setMaxPerDay] = useState(med?.maxPerDay != null ? String(med.maxPerDay) : '');
+  const [schedule, setSchedule] = useState<Medication['schedule']>(med?.schedule ?? 'interval');
+  const [minHours, setMinHours] = useState(med?.schedule === 'interval' ? String(med.minHours) : '');
+  const [maxHours, setMaxHours] = useState(optional(med?.maxHours));
+  const [maxPerDay, setMaxPerDay] = useState(optional(med?.maxPerDay));
+  const [dailyTarget, setDailyTarget] = useState(optional(med?.dailyTarget));
+  const [meals, setMeals] = useState<MealKey[]>(med?.meals ?? []);
   const [notes, setNotes] = useState(med?.notes ?? '');
   const [color, setColor] = useState(
     () => med?.color ?? MED_COLORS.find((c) => !usedColors.includes(c)) ?? MED_COLORS[0],
   );
 
+  const cutoff = formatClock(settings.lastDoseBy);
+  const dayStart = formatClock(settings.dayStart);
+
+  const toggleMeal = (key: MealKey) =>
+    setMeals((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
   const save = () => {
-    const min = parseNumber(minHours);
-    const max = maxHours.trim() === '' ? null : parseNumber(maxHours);
-    const perDay = maxPerDay.trim() === '' ? null : parseNumber(maxPerDay);
-
     if (!name.trim()) return Alert.alert('Name needed', 'Please enter the name of the medication.');
-    if (min === null || min <= 0)
-      return Alert.alert('Minimum gap needed', 'Enter how many hours must pass between doses, e.g. 4.');
-    if (max !== null && (Number.isNaN(max) || max <= min))
-      return Alert.alert('Check the maximum gap', 'The maximum gap must be longer than the minimum gap.');
-    if (perDay !== null && (Number.isNaN(perDay) || perDay < 1 || !Number.isInteger(perDay)))
-      return Alert.alert('Check the daily limit', 'The daily limit must be a whole number, e.g. 4.');
-
-    onSave({
+    const common = {
       id: med?.id ?? newId(),
       name: name.trim(),
       dose: dose.trim(),
-      minHours: min,
-      maxHours: max,
-      maxPerDay: perDay,
       notes: notes.trim(),
       color,
-    });
+    };
+
+    if (schedule === 'meals') {
+      if (meals.length === 0) return Alert.alert('Pick a meal', 'Choose at least one meal time to take it with.');
+      return onSave({
+        ...common,
+        schedule,
+        meals,
+        minHours: 0,
+        maxHours: null,
+        maxPerDay: null,
+        dailyTarget: null,
+      });
+    }
+
+    const min = parseNumber(minHours);
+    const max = maxHours.trim() === '' ? null : parseNumber(maxHours);
+    const perDay = maxPerDay.trim() === '' ? null : parseNumber(maxPerDay);
+    const target = dailyTarget.trim() === '' ? null : parseNumber(dailyTarget);
+    const isCount = (n: number | null) => n === null || (Number.isInteger(n) && n >= 1);
+
+    if (min === null || Number.isNaN(min) || min <= 0)
+      return Alert.alert('Minimum gap needed', 'Enter how many hours must pass between doses, e.g. 4.');
+    if (max !== null && (Number.isNaN(max) || max <= min))
+      return Alert.alert('Check the maximum gap', 'The maximum gap must be longer than the minimum gap.');
+    if (!isCount(perDay)) return Alert.alert('Check the daily limit', 'The daily limit must be a whole number, e.g. 4.');
+    if (!isCount(target))
+      return Alert.alert('Check doses per day', 'The number of doses each day must be a whole number, e.g. 4.');
+    if (target !== null && perDay !== null && target > perDay)
+      return Alert.alert('Check doses per day', `That's more than the ${perDay} allowed in 24 hours.`);
+    const dayHours = ((settings.lastDoseBy - settings.dayStart + 24 * 60) % (24 * 60)) / 60;
+    if (target !== null && (target - 1) * min > dayHours)
+      return Alert.alert(
+        "Those doses won't fit",
+        `${target} doses ${min} hours apart don't fit between ${dayStart} and ${cutoff}. You can change those times in Settings.`,
+      );
+
+    onSave({ ...common, schedule, minHours: min, maxHours: max, maxPerDay: perDay, dailyTarget: target, meals: [] });
   };
 
   const confirmDelete = () => {
@@ -76,21 +111,65 @@ function MedForm({ med, usedColors, onSave, onDelete }: Props) {
       <Field label="Dose (optional)" hint='e.g. "2 tablets" or "50mg"'>
         <TextInput style={styles.input} value={dose} onChangeText={setDose} />
       </Field>
-      <Field
-        label="Minimum hours between doses"
-        hint="He'll be told when it's OK to take the next one. Use decimals for part hours, e.g. 4.5"
-      >
-        <TextInput style={styles.input} value={minHours} onChangeText={setMinHours} keyboardType="decimal-pad" />
+
+      <Field label="When is it taken?">
+        <View style={styles.segment}>
+          <Choice selected={schedule === 'interval'} onPress={() => setSchedule('interval')} title="Every few hours" />
+          <Choice selected={schedule === 'meals'} onPress={() => setSchedule('meals')} title="At meal times" />
+        </View>
       </Field>
-      <Field
-        label="Maximum hours between doses (optional)"
-        hint="An alarm goes off if no dose is logged by then. Leave blank for 'only when needed' medication."
-      >
-        <TextInput style={styles.input} value={maxHours} onChangeText={setMaxHours} keyboardType="decimal-pad" />
-      </Field>
-      <Field label="Most doses allowed in 24 hours (optional)" hint="e.g. 4 for paracetamol. Leave blank for no limit.">
-        <TextInput style={styles.input} value={maxPerDay} onChangeText={setMaxPerDay} keyboardType="number-pad" />
-      </Field>
+
+      {schedule === 'meals' ? (
+        <Field
+          label="Which meals?"
+          hint={`A reminder goes off at each meal, and an alarm if it's not taken within ${settings.mealGraceMinutes} minutes. Meal times can be changed in Settings.`}
+        >
+          <View style={{ gap: 8 }}>
+            {MEALS.map((m) => (
+              <Choice
+                key={m.key}
+                selected={meals.includes(m.key)}
+                onPress={() => toggleMeal(m.key)}
+                title={`${meals.includes(m.key) ? '☑' : '☐'}  ${m.label}  (around ${formatClock(settings.mealTimes[m.key])})`}
+                align="left"
+              />
+            ))}
+          </View>
+        </Field>
+      ) : (
+        <>
+          <Field
+            label="Minimum hours between doses"
+            hint="He'll be told when it's OK to take the next one. Use decimals for part hours, e.g. 4.5"
+          >
+            <TextInput style={styles.input} value={minHours} onChangeText={setMinHours} keyboardType="decimal-pad" />
+          </Field>
+          <Field
+            label="Maximum hours between doses (optional)"
+            hint="An alarm goes off if no dose is logged by then. Leave blank for 'only when needed' medication."
+          >
+            <TextInput style={styles.input} value={maxHours} onChangeText={setMaxHours} keyboardType="decimal-pad" />
+          </Field>
+          <Field
+            label="Doses to fit in each day (optional)"
+            hint={`e.g. 4. The app works out the latest time for each dose so they all fit in before ${cutoff}, and sounds the alarm if he's falling behind.`}
+          >
+            <TextInput
+              style={styles.input}
+              value={dailyTarget}
+              onChangeText={setDailyTarget}
+              keyboardType="number-pad"
+            />
+          </Field>
+          <Field
+            label="Most doses allowed in 24 hours (optional)"
+            hint="e.g. 4 for paracetamol. Leave blank for no limit."
+          >
+            <TextInput style={styles.input} value={maxPerDay} onChangeText={setMaxPerDay} keyboardType="number-pad" />
+          </Field>
+        </>
+      )}
+
       <Field label="Notes (optional)" hint="e.g. Take with food">
         <TextInput style={[styles.input, { minHeight: 80 }]} value={notes} onChangeText={setNotes} multiline />
       </Field>
@@ -110,6 +189,33 @@ function MedForm({ med, usedColors, onSave, onDelete }: Props) {
       <Button big title="Save" onPress={save} style={{ marginTop: 8 }} />
       {med && <Button title="Remove this medication" kind="link" onPress={confirmDelete} style={{ marginTop: 16 }} />}
     </>
+  );
+}
+
+function Choice({
+  selected,
+  onPress,
+  title,
+  align = 'center',
+}: {
+  selected: boolean;
+  onPress: () => void;
+  title: string;
+  align?: 'center' | 'left';
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[
+        styles.choice,
+        align === 'left' && { alignItems: 'flex-start' },
+        selected && { backgroundColor: colors.primary, borderColor: colors.primary },
+      ]}
+    >
+      <Text style={[styles.choiceText, selected && { color: '#fff' }]}>{title}</Text>
+    </Pressable>
   );
 }
 
@@ -142,6 +248,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: colors.text,
   },
+  segment: { flexDirection: 'row', gap: 8 },
+  choice: {
+    flex: 1,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choiceText: { fontSize: 17, fontWeight: '700', color: colors.text },
   colors: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatch: { width: 44, height: 44, borderRadius: 22 },
   swatchSelected: { borderWidth: 4, borderColor: colors.text },

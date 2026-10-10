@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_SETTINGS } from './logic';
+import { DEFAULT_SETTINGS, normalizeMedication } from './logic';
 import type { DoseRecord, Medication, Settings } from './types';
 
 const KEYS = {
@@ -25,7 +25,15 @@ export async function loadAll(): Promise<StoredData> {
     read<DoseRecord[]>(KEYS.doses, []),
     read<Partial<Settings>>(KEYS.settings, {}),
   ]);
-  return { meds, doses, settings: { ...DEFAULT_SETTINGS, ...settings } };
+  return {
+    meds: meds.map(normalizeMedication),
+    doses,
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      mealTimes: { ...DEFAULT_SETTINGS.mealTimes, ...settings.mealTimes },
+    },
+  };
 }
 
 export const saveMeds = (meds: Medication[]) => AsyncStorage.setItem(KEYS.meds, JSON.stringify(meds));
