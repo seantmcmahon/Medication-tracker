@@ -23,14 +23,23 @@ Everything is stored on the phone itself. There's no account, no server and no i
 
 The app uses local notifications with a custom alarm sound, so it needs its own build. It **won't work fully in Expo Go**.
 
-### Android (easiest)
+### Android, built from your phone (no computer needed)
 
-1. Create a free account at <https://expo.dev>.
-2. Install the dependencies with `npm install`.
-3. Build an installable APK in the cloud with `npx eas-cli@latest build --platform android --profile preview`.
-4. Open the link EAS gives you on his phone, download the APK and install it. You'll need to allow installing from that source.
-5. Open the app, **allow notifications**, and if Android asks, allow **Alarms & reminders**. Without that, reminders can arrive a few minutes late.
-6. In Settings, tap **Test the alarm** and lock the phone to check it sounds.
+GitHub builds the app for you using `.github/workflows/build-android.yml`.
+
+1. Open this repository in the **GitHub app** or on github.com in your phone's browser.
+2. Go to **Actions → Build Android APK → Run workflow**. It also runs on its own whenever new code is pushed.
+3. Wait about 15–20 minutes for the build to go green.
+4. Go to **Releases** and open the latest release. On his phone, tap **medication-tracker.apk** to download it. If the repo is private, you'll need to be signed in to GitHub, or download it on your phone and send him the file.
+5. Open the downloaded file and allow "install unknown apps" for the browser or Files app when asked.
+6. Open the app, **allow notifications**, and if Android asks, allow **Alarms & reminders**. Without that, reminders can arrive a few minutes late.
+7. In Settings, tap **Test the alarm** and lock the phone to check it sounds.
+
+Later builds install as an update over the top, and his medication list and history are kept.
+
+### Android, built with Expo's build service (alternative)
+
+Create a free account at <https://expo.dev>, then run `npx eas-cli@latest build --platform android --profile preview` and open the link it gives you on his phone.
 
 On some phones (Samsung, Xiaomi, Huawei) it's also worth turning off battery optimisation for the app: *Settings → Apps → Medication Tracker → Battery → Unrestricted*.
 

@@ -1,0 +1,72 @@
+# Builds an installable Android APK on GitHub's servers.
+# Start it from your phone: GitHub app or github.com → Actions → "Build Android APK" → Run workflow.
+# When it finishes, the APK is attached to a new release (Releases → latest → medication-tracker.apk).
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/medication-reminder-app-65s0ud]
+    paths-ignore: ['**.md']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: 1
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk medication-tracker.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medication-tracker-apk
+          path: medication-tracker.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Medication Tracker build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: medication-tracker.apk
+          body: |
+            Open this page on the Android phone and tap **medication-tracker.apk** to download and install it.
+            Built from ${{ github.ref_name }} @ ${{ github.sha }}.
