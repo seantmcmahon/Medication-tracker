@@ -69,19 +69,19 @@ Missed doses are noticed by a small server rather than his phone, so the family 
 **2. Set up Cloudflare (free).**
 1. Sign up at <https://dash.cloudflare.com>.
 2. Open **Workers & Pages** once. If it asks you to choose a `workers.dev` subdomain, pick any name.
-3. Copy your **Account ID**. It's shown on the Workers & Pages page and on the account home page.
-4. Go to **My Profile → API Tokens → Create Token**, use the **"Edit Cloudflare Workers"** template, and create it. Copy the token.
+3. Go to **My Profile → API Tokens → Create Token**, use the **"Edit Cloudflare Workers"** template, and create it. Copy the token.
 
 **3. Choose a key.** Make up a long password, e.g. four random words. The app uses it to prove to the server that updates are genuine.
 
-**4. Add four secrets to GitHub.** Open this repository in your phone's browser. If the Settings tab is hidden, switch to the desktop site. Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+**4. Add three secrets to GitHub.** Open this repository in your phone's browser. If the Settings tab is hidden, switch to the desktop site. Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
 
 | Name | Value |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | the token from BotFather |
-| `CLOUDFLARE_ACCOUNT_ID` | your Cloudflare Account ID |
 | `CLOUDFLARE_API_TOKEN` | the Cloudflare API token |
 | `APP_KEY` | the key you chose |
+
+You only need `CLOUDFLARE_ACCOUNT_ID` as well if your Cloudflare login has more than one account. It's the 32-character code in the address bar after `dash.cloudflare.com/` once you're logged in.
 
 Secrets stay private even though the repository is public.
 

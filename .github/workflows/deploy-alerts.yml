@@ -1,7 +1,8 @@
 # Deploys the family-alerts server (server/) to Cloudflare and connects the Telegram bot to it.
 # Needs these repository secrets (Settings → Secrets and variables → Actions):
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TELEGRAM_BOT_TOKEN, APP_KEY
-# Until they're all set, this workflow skips deployment without failing.
+#   CLOUDFLARE_API_TOKEN, TELEGRAM_BOT_TOKEN, APP_KEY
+#   and optionally CLOUDFLARE_ACCOUNT_ID (only needed if your Cloudflare login has more than one account).
+# Until the required ones are set, this workflow skips deployment without failing.
 name: Deploy family alerts
 
 on:
@@ -51,7 +52,7 @@ jobs:
         id: secrets
         run: |
           missing=""
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID TELEGRAM_BOT_TOKEN APP_KEY; do
+          for name in CLOUDFLARE_API_TOKEN TELEGRAM_BOT_TOKEN APP_KEY; do
             [ -z "${!name}" ] && missing="$missing $name"
           done
           if [ -n "$missing" ]; then
@@ -65,6 +66,9 @@ jobs:
         if: steps.secrets.outputs.ready == 'true'
         id: deploy
         run: |
+          # Without an account ID, wrangler uses the only account the API token can access.
+          [ -z "$CLOUDFLARE_ACCOUNT_ID" ] && unset CLOUDFLARE_ACCOUNT_ID
+          set -o pipefail
           npx wrangler deploy | tee deploy.log
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
           if [ -z "$url" ]; then
@@ -76,6 +80,7 @@ jobs:
       - name: Store secrets on the server
         if: steps.secrets.outputs.ready == 'true'
         run: |
+          [ -z "$CLOUDFLARE_ACCOUNT_ID" ] && unset CLOUDFLARE_ACCOUNT_ID
           node -e 'console.log(JSON.stringify({ TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN, APP_KEY: process.env.APP_KEY }))' > secrets.json
           npx wrangler secret bulk secrets.json
           rm secrets.json
