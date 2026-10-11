@@ -19,6 +19,8 @@ Notifications.setNotificationHandler({
 });
 
 export async function setupNotifications(): Promise<boolean> {
+  // The web build is only used to preview the screens; it has no phone notifications to set up.
+  if (Platform.OS === 'web') return true;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL, {
       name: 'Can take now',
@@ -55,6 +57,7 @@ export async function rescheduleAll(
   doses: DoseRecord[],
   settings: Settings,
 ): Promise<void> {
+  if (Platform.OS === 'web') return;
   const existing = await Notifications.getAllScheduledNotificationsAsync();
   await Promise.all(
     existing
