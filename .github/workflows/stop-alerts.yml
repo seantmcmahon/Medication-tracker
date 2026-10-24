@@ -1,0 +1,53 @@
+# Takes the family-alerts server offline without deleting it or its stored data:
+# no web address (the app and Telegram can't reach it), no scheduled checks (no alerts are sent),
+# and the Telegram bot is disconnected. Run "Deploy family alerts" to turn it back on.
+name: Stop family alerts
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-alerts
+  cancel-in-progress: false
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Remove the web address and scheduled checks
+        run: |
+          [ -z "$CLOUDFLARE_ACCOUNT_ID" ] && unset CLOUDFLARE_ACCOUNT_ID
+          npx wrangler deploy --config wrangler.stopped.toml
+
+      - name: Disconnect the Telegram bot
+        if: env.TELEGRAM_BOT_TOKEN != ''
+        continue-on-error: true
+        run: curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook" -d drop_pending_updates=true
+
+      - name: Summary
+        run: |
+          {
+            echo "### Family alerts server is offline"
+            echo ""
+            echo "The server no longer has a web address or scheduled checks, and the Telegram bot is disconnected."
+            echo "Its stored data is kept. Run **Deploy family alerts** to turn it back on."
+          } >> "$GITHUB_STEP_SUMMARY"

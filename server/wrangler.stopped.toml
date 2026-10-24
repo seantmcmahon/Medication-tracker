@@ -1,0 +1,19 @@
+# Used only by .github/workflows/stop-alerts.yml to take the server offline without deleting it.
+# Same Worker and storage as wrangler.toml, but with no web address and no scheduled checks.
+# To turn the server back on, run the "Deploy family alerts" workflow (it uses wrangler.toml).
+name = "medication-tracker-alerts"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = false
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "HOME"
+class_name = "Home"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Home"]
+
+[triggers]
+crons = []

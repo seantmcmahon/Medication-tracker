@@ -5,15 +5,9 @@
 # Until the required ones are set, this workflow skips deployment without failing.
 name: Deploy family alerts
 
+# Manual only, so the server stays off once stopped (see stop-alerts.yml) until someone runs this.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, claude/medication-reminder-app-65s0ud]
-    paths:
-      - 'server/**'
-      - 'src/logic.ts'
-      - 'src/types.ts'
-      - '.github/workflows/deploy-alerts.yml'
 
 concurrency:
   group: deploy-alerts
